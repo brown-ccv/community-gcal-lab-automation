@@ -47,14 +47,30 @@ let IS_DEMO_MODE = true;
 function showAlert(message, type = 'success') {
   const alertDiv = document.getElementById('alert');
   alertDiv.className = `alert alert-${type}`;
-  alertDiv.textContent = message;
-  alertDiv.style.display = 'block';
   
-  // Auto-hide after 5 seconds for success messages
+  // Create close button
+  const closeBtn = document.createElement('button');
+  closeBtn.innerHTML = '×';
+  closeBtn.style.cssText = 'position: absolute; top: 10px; right: 15px; background: none; border: none; font-size: 24px; cursor: pointer; color: inherit; opacity: 0.7; line-height: 1;';
+  closeBtn.onmouseover = () => closeBtn.style.opacity = '1';
+  closeBtn.onmouseout = () => closeBtn.style.opacity = '0.7';
+  closeBtn.onclick = () => alertDiv.style.display = 'none';
+  
+  // Clear previous content and add message + close button
+  alertDiv.innerHTML = '';
+  const messageDiv = document.createElement('div');
+  messageDiv.style.whiteSpace = 'pre-line';
+  messageDiv.textContent = message;
+  alertDiv.appendChild(messageDiv);
+  alertDiv.appendChild(closeBtn);
+  alertDiv.style.display = 'block';
+  alertDiv.style.position = 'relative';
+  
+  // Auto-hide after 8 seconds for success messages
   if (type === 'success') {
     setTimeout(() => {
       alertDiv.style.display = 'none';
-    }, 5000);
+    }, 8000);
   }
   
   // Scroll to top to show alert
@@ -93,6 +109,25 @@ function validateTime(timeStr) {
   if (m < 0 || m > 59) return false;
   
   return true;
+}
+
+// Calculate event dates from base date
+function calculateEventDates(baseDateStr) {
+  const [month, day, year] = baseDateStr.split('/').map(Number);
+  const baseDate = new Date(year, month - 1, day);
+  
+  const followUps = [
+    { label: '1 day', days: 1 },
+    { label: '10 day', days: 10 },
+    { label: '45 day', days: 45 }
+  ];
+  
+  return followUps.map(followUp => {
+    const eventDate = new Date(baseDate);
+    eventDate.setDate(baseDate.getDate() + followUp.days);
+    const formattedDate = `${eventDate.getMonth() + 1}/${eventDate.getDate()}/${eventDate.getFullYear()}`;
+    return { label: followUp.label, date: formattedDate };
+  });
 }
 
 // Update event preview when title changes
@@ -148,10 +183,13 @@ document.getElementById('create-form')?.addEventListener('submit', async (e) => 
       // DEMO MODE: Simulate event creation without actual API calls
       await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate API delay
       
-      const message = `✅ [DEMO] Would have created 3 events for "${title}" (${attendeeEmail}):\n` +
-                     `• ${title} - 1 day check-in\n` +
-                     `• ${title} - 10 day check-in\n` +
-                     `• ${title} - 45 day check-in\n\n` +
+      // Calculate event dates
+      const eventDates = calculateEventDates(baseDate);
+      
+      const message = `✅ [DEMO] Would have created 3 events for "${title}" (${attendeeEmail}):\n\n` +
+                     `• ${title} - 1 day check-in on ${eventDates[0].date}\n` +
+                     `• ${title} - 10 day check-in on ${eventDates[1].date}\n` +
+                     `• ${title} - 45 day check-in on ${eventDates[2].date}\n\n` +
                      `ℹ️ This is a demo interface. Run with 'npm start' for full functionality.`;
       
       showAlert(message, 'success');
