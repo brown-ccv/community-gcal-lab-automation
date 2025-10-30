@@ -2,6 +2,12 @@
 
 Automated creation of follow-up check-in calendar events for lab participants.
 
+## 🌐 Live Demo
+
+**[View Demo Interface](https://gcal-lab-automation.onrender.com/)** - Showcases the UI and functionality (no actual events created)
+
+> **Note:** The hosted version is a demonstration interface. For full functionality with actual Google Calendar event creation, clone this repository and run it locally with your own API credentials.
+
 ## Features
 
 - 📅 **Batch event creation**: Creates multiple follow-up check-ins (1 day, 10 day, 45 day) from a single base date
