@@ -264,7 +264,21 @@ app.post('/clear-demo-events', async (req, res) => {
 
 // Health check for Render
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', authorized: isAuthorized() });
+  const credentialsExist = fs.existsSync(CREDENTIALS_PATH);
+  const tokenExists = fs.existsSync(TOKEN_PATH);
+  
+  res.json({ 
+    status: 'ok', 
+    authorized: isAuthorized(),
+    credentialsPath: CREDENTIALS_PATH,
+    credentialsExist,
+    tokenExists,
+    env: {
+      nodeEnv: process.env.NODE_ENV,
+      hasRedirectUri: !!process.env.REDIRECT_URI,
+      redirectUri: process.env.REDIRECT_URI || 'not set'
+    }
+  });
 });
 
 // Start server
