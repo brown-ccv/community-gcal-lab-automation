@@ -14,8 +14,13 @@ const PORT = process.env.PORT || 3000;
 // Configuration
 const SCOPES = ['https://www.googleapis.com/auth/calendar'];
 const TOKEN_PATH = path.join(__dirname, '..', 'token.json');
-const CREDENTIALS_PATH = path.join(__dirname, '..', 'credentials.json');
+// Check for credentials in Render secret files location first, then local
+const CREDENTIALS_PATH = fs.existsSync('/etc/secrets/credentials.json') 
+  ? '/etc/secrets/credentials.json'
+  : path.join(__dirname, '..', 'credentials.json');
 const REDIRECT_URI = process.env.REDIRECT_URI || 'http://localhost:3000/oauth2callback';
+
+console.log('Using credentials from:', CREDENTIALS_PATH);
 
 // Middleware
 app.use(express.urlencoded({ extended: true }));
@@ -30,10 +35,23 @@ function getOAuth2Client() {
     throw new Error('credentials.json not found. Please add it to the project root.');
   }
   
-  const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf8'));
-  const { client_secret, client_id } = credentials.installed || credentials.web;
-  
-  return new google.auth.OAuth2(client_id, client_secret, REDIRECT_URI);
+  try {
+    const fileContent = fs.readFileSync(CREDENTIALS_PATH, 'utf8');
+    console.log('Credentials file length:', fileContent.length);
+    console.log('First 50 chars:', fileContent.substring(0, 50));
+    
+    const credentials = JSON.parse(fileContent.trim());
+    const { client_secret, client_id } = credentials.installed || credentials.web;
+    
+    if (!client_id || !client_secret) {
+      throw new Error('Invalid credentials.json format: missing client_id or client_secret');
+    }
+    
+    return new google.auth.OAuth2(client_id, client_secret, REDIRECT_URI);
+  } catch (error) {
+    console.error('Error reading credentials.json:', error);
+    throw new Error(`Failed to parse credentials.json: ${error.message}`);
+  }
 }
 
 function isAuthorized() {
