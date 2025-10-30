@@ -1,5 +1,48 @@
 // Form handling and API calls
 
+// Global demo mode flag - will be set on page load
+let IS_DEMO_MODE = true;
+
+// Check demo mode status on page load
+(async function checkDemoMode() {
+  try {
+    const response = await fetch('/api/demo-mode');
+    const data = await response.json();
+    IS_DEMO_MODE = data.demoMode;
+    console.log('Demo mode:', IS_DEMO_MODE ? 'ENABLED' : 'DISABLED');
+    
+    // Show appropriate banner
+    const banner = document.getElementById('mode-banner');
+    if (banner) {
+      if (IS_DEMO_MODE) {
+        banner.style.backgroundColor = '#e3f2fd';
+        banner.style.borderLeft = '4px solid #2196f3';
+        banner.innerHTML = `
+          <strong>ℹ️ Demo Version</strong>
+          <p style="margin: 0.5rem 0 0 0;">
+            This is a demonstration interface showcasing the calendar automation tool's capabilities. 
+            <strong>No actual calendar events will be created from this hosted version.</strong> 
+            For full functionality, run <code>npm start</code> locally with proper Google Calendar API credentials.
+          </p>
+        `;
+      } else {
+        banner.style.backgroundColor = '#e8f5e9';
+        banner.style.borderLeft = '4px solid #4caf50';
+        banner.innerHTML = `
+          <strong>✅ Live Mode</strong>
+          <p style="margin: 0.5rem 0 0 0;">
+            Connected to Google Calendar API. Events created here will be <strong>real calendar invites</strong> sent to participants.
+          </p>
+        `;
+      }
+      banner.style.display = 'block';
+    }
+  } catch (error) {
+    console.error('Failed to check demo mode, defaulting to demo:', error);
+    IS_DEMO_MODE = true;
+  }
+})();
+
 // Show alert message
 function showAlert(message, type = 'success') {
   const alertDiv = document.getElementById('alert');
@@ -101,16 +144,65 @@ document.getElementById('create-form')?.addEventListener('submit', async (e) => 
   submitBtn.innerHTML = '<span class="loading-spinner"></span>Creating events...';
   
   try {
-    // DEMO MODE: Simulate event creation without actual API calls
-    await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate API delay
-    
-    const message = `✅ [DEMO] Would have created 3 events for "${title}" (${attendeeEmail}):\n` +
-                   `• ${title} - 1 day check-in\n` +
-                   `• ${title} - 10 day check-in\n` +
-                   `• ${title} - 45 day check-in\n\n` +
-                   `ℹ️ This is a demo interface. Run locally with credentials.json for full functionality.`;
-    
-    showAlert(message, 'success');
+    if (IS_DEMO_MODE) {
+      // DEMO MODE: Simulate event creation without actual API calls
+      await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate API delay
+      
+      const message = `✅ [DEMO] Would have created 3 events for "${title}" (${attendeeEmail}):\n` +
+                     `• ${title} - 1 day check-in\n` +
+                     `• ${title} - 10 day check-in\n` +
+                     `• ${title} - 45 day check-in\n\n` +
+                     `ℹ️ This is a demo interface. Run with 'npm start' for full functionality.`;
+      
+      showAlert(message, 'success');
+    } else {
+      // REAL MODE: Make actual API call
+      const response = await fetch('/create-events', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ baseDate, title, time: time || '09:00', attendeeEmail, demoMode }),
+        redirect: 'manual',
+      });
+      
+      // Handle redirect to authorization
+      if (response.type === 'opaqueredirect' || response.status === 302) {
+        window.location.href = '/authorize';
+        return;
+      }
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create events');
+      }
+      
+      // Count successes
+      const created = data.results.filter(r => r.type === 'created').length;
+      const skipped = data.results.filter(r => r.type === 'skipped').length;
+      const errors = data.results.filter(r => r.type === 'error').length;
+      
+      let message = '';
+      if (created > 0) {
+        message = `✅ Successfully created ${created} event(s)!`;
+        if (skipped > 0) {
+          message += ` (${skipped} already existed)`;
+        }
+        if (data.demoMode) {
+          message += ' [Demo Mode - Events tagged for easy cleanup]';
+        }
+        message += ' Check your calendar and email.';
+      } else if (skipped > 0) {
+        message = `ℹ️ All ${skipped} event(s) already exist. No duplicates created.`;
+      }
+      
+      if (errors > 0) {
+        message += ` ⚠️ ${errors} event(s) failed to create.`;
+      }
+      
+      showAlert(message, errors > 0 ? 'error' : 'success');
+    }
     
     // Clear form on success
     document.getElementById('create-form').reset();
@@ -161,13 +253,55 @@ document.getElementById('delete-form')?.addEventListener('submit', async (e) => 
   deleteBtn.innerHTML = '<span class="loading-spinner"></span>Deleting events...';
   
   try {
-    // DEMO MODE: Simulate event deletion without actual API calls
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API delay
-    
-    const message = `✅ [DEMO] Would have deleted 3 events for "${title}" (${attendeeEmail})\n\n` +
-                   `ℹ️ This is a demo interface. Run locally with credentials.json for full functionality.`;
-    
-    showAlert(message, 'success');
+    if (IS_DEMO_MODE) {
+      // DEMO MODE: Simulate event deletion without actual API calls
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API delay
+      
+      const message = `✅ [DEMO] Would have deleted 3 events for "${title}" (${attendeeEmail})\n\n` +
+                     `ℹ️ This is a demo interface. Run with 'npm start' for full functionality.`;
+      
+      showAlert(message, 'success');
+    } else {
+      // REAL MODE: Make actual API call
+      const response = await fetch('/delete-events', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ baseDate, title, attendeeEmail }),
+        redirect: 'manual',
+      });
+      
+      // Handle redirect to authorization
+      if (response.type === 'opaqueredirect' || response.status === 302) {
+        window.location.href = '/authorize';
+        return;
+      }
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete events');
+      }
+      
+      // Count results
+      const deleted = data.results.filter(r => r.type === 'deleted').length;
+      const notFound = data.results.filter(r => r.type === 'not-found').length;
+      const errors = data.results.filter(r => r.type === 'error').length;
+      
+      let message = '';
+      if (deleted > 0) {
+        message = `✅ Successfully deleted ${deleted} event(s).`;
+      } else if (notFound > 0) {
+        message = `ℹ️ No matching events found to delete.`;
+      }
+      
+      if (errors > 0) {
+        message += ` ⚠️ ${errors} event(s) failed to delete.`;
+      }
+      
+      showAlert(message, errors > 0 ? 'error' : 'success');
+    }
     
     // Clear form on success
     document.getElementById('delete-form').reset();
@@ -196,13 +330,50 @@ document.getElementById('clear-demo-btn')?.addEventListener('click', async () =>
   clearBtn.innerHTML = '<span class="loading-spinner"></span>Clearing demo events...';
   
   try {
-    // DEMO MODE: Simulate clearing events without actual API calls
-    await new Promise(resolve => setTimeout(resolve, 1200)); // Simulate API delay
-    
-    const message = `✅ [DEMO] Would have cleared all demo mode events from calendar\n\n` +
-                   `ℹ️ This is a demo interface. Run locally with credentials.json for full functionality.`;
-    
-    showAlert(message, 'success');
+    if (IS_DEMO_MODE) {
+      // DEMO MODE: Simulate clearing events without actual API calls
+      await new Promise(resolve => setTimeout(resolve, 1200)); // Simulate API delay
+      
+      const message = `✅ [DEMO] Would have cleared all demo mode events from calendar\n\n` +
+                     `ℹ️ This is a demo interface. Run with 'npm start' for full functionality.`;
+      
+      showAlert(message, 'success');
+    } else {
+      // REAL MODE: Make actual API call
+      const response = await fetch('/clear-demo-events', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        redirect: 'manual',
+      });
+      
+      // Handle redirect to authorization
+      if (response.type === 'opaqueredirect' || response.status === 302) {
+        window.location.href = '/authorize';
+        return;
+      }
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to clear demo events');
+      }
+      
+      let message = '';
+      if (data.deleted > 0) {
+        message = `✅ Successfully deleted ${data.deleted} demo event(s).`;
+      } else {
+        message = `ℹ️ No demo events found to delete.`;
+      }
+      
+      if (data.errors > 0) {
+        message += ` ⚠️ ${data.errors} event(s) failed to delete.`;
+        console.error('Error details:', data.errorDetails);
+      }
+      
+      showAlert(message, data.errors > 0 ? 'error' : 'success');
+    }
     
   } catch (error) {
     console.error('Error:', error);

@@ -64,10 +64,16 @@ The access token will be saved to `token.json` for future runs.
 
 ### Web Interface (Recommended for Teams)
 
-Start the web server:
+**Start the web server:**
 
+For **real calendar event creation** (requires credentials.json):
 ```bash
 npm start
+```
+
+For **demo mode** (UI only, no actual events created):
+```bash
+npm run start:demo
 ```
 
 Then open your browser and visit: **http://localhost:3000**
@@ -76,6 +82,7 @@ You'll see a clean web form where you can:
 - Enter base date, participant ID, and time
 - See a preview of events to be created
 - Create or delete events with one click
+- A banner will indicate if you're in Demo or Live mode
 
 See `docs/WEB_USER_GUIDE.md` for detailed instructions for lab members.
 

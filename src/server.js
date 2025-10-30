@@ -10,6 +10,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const DEMO_MODE = process.env.DEMO_MODE === 'true';
 
 // Configuration
 const SCOPES = ['https://www.googleapis.com/auth/calendar'];
@@ -21,6 +22,7 @@ const CREDENTIALS_PATH = fs.existsSync('/etc/secrets/credentials.json')
 const REDIRECT_URI = process.env.REDIRECT_URI || 'http://localhost:3000/oauth2callback';
 
 console.log('Using credentials from:', CREDENTIALS_PATH);
+console.log('Demo mode:', DEMO_MODE ? 'ENABLED (no real API calls)' : 'DISABLED (real calendar events)');
 
 // Middleware
 app.use(express.urlencoded({ extended: true }));
@@ -67,8 +69,18 @@ function getAuthorizedClient() {
 
 // Routes
 
+// API endpoint to check demo mode
+app.get('/api/demo-mode', (req, res) => {
+  res.json({ demoMode: DEMO_MODE });
+});
+
 // Home page - main form
 app.get('/', (req, res) => {
+  // In demo mode, skip auth checks
+  if (DEMO_MODE) {
+    return res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+  }
+  
   // Check if credentials.json exists
   if (!fs.existsSync(CREDENTIALS_PATH)) {
     return res.sendFile(path.join(__dirname, '..', 'public', 'setup-required.html'));
