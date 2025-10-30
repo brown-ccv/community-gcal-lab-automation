@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Setup Required - Lab Calendar Automation</title>
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    .setup-container {
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 20px;
+    }
+    .error-box {
+      background: #fff3cd;
+      border: 2px solid #ffc107;
+      border-radius: 12px;
+      padding: 30px;
+      margin-bottom: 30px;
+    }
+    .error-box h1 {
+      color: #856404;
+      margin-bottom: 15px;
+    }
+    .step {
+      background: white;
+      border: 1px solid #dee2e6;
+      border-radius: 8px;
+      padding: 25px;
+      margin-bottom: 20px;
+    }
+    .step h3 {
+      color: var(--primary-color);
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+    }
+    .step-number {
+      background: var(--primary-color);
+      color: white;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 12px;
+      font-weight: bold;
+    }
+    .code-block {
+      background: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-radius: 6px;
+      padding: 15px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.9rem;
+      overflow-x: auto;
+      margin: 10px 0;
+    }
+    .warning {
+      background: #f8d7da;
+      border-left: 4px solid #dc3545;
+      padding: 15px;
+      border-radius: 4px;
+      margin: 20px 0;
+    }
+    .info {
+      background: #d1ecf1;
+      border-left: 4px solid #0c5460;
+      padding: 15px;
+      border-radius: 4px;
+      margin: 20px 0;
+    }
+    ul {
+      margin: 10px 0;
+      padding-left: 25px;
+    }
+    li {
+      margin: 8px 0;
+    }
+    a.btn {
+      display: inline-block;
+      padding: 12px 24px;
+      background: var(--primary-color);
+      color: white;
+      text-decoration: none;
+      border-radius: 6px;
+      font-weight: 500;
+      transition: all 0.3s;
+    }
+    a.btn:hover {
+      background: var(--primary-hover);
+      transform: translateY(-2px);
+    }
+  </style>
+</head>
+<body>
+  <div class="setup-container">
+    <div class="error-box">
+      <h1>🔧 Google Calendar API Setup Required</h1>
+      <p><strong>The application cannot find your Google Calendar API credentials.</strong></p>
+      <p>This is normal for first-time setup! Follow the steps below to get started.</p>
+    </div>
+
+    <div class="warning">
+      <strong>⚠️ Important:</strong> You need access to a Google Cloud Console account to set up API credentials. If you're using an organization's Google Workspace, you may need to:
+      <ul>
+        <li>Request API access from your IT administrator</li>
+        <li>Or use a personal Google account for testing</li>
+      </ul>
+    </div>
+
+    <div class="step">
+      <h3><span class="step-number">1</span> Create Google Cloud Project</h3>
+      <ol>
+        <li>Go to <a href="https://console.cloud.google.com/" target="_blank">Google Cloud Console</a></li>
+        <li>Click the project dropdown at the top</li>
+        <li>Click <strong>"New Project"</strong></li>
+        <li>Name it: "Lab Calendar Automation" (or your choice)</li>
+        <li>Click <strong>"Create"</strong></li>
+      </ol>
+    </div>
+
+    <div class="step">
+      <h3><span class="step-number">2</span> Enable Google Calendar API</h3>
+      <ol>
+        <li>In your project, go to <strong>"APIs & Services"</strong> → <strong>"Library"</strong></li>
+        <li>Search for: <code>Google Calendar API</code></li>
+        <li>Click on it and click <strong>"Enable"</strong></li>
+      </ol>
+    </div>
+
+    <div class="step">
+      <h3><span class="step-number">3</span> Configure OAuth Consent Screen</h3>
+      <p>Before creating credentials, configure the OAuth consent screen:</p>
+      <ol>
+        <li>Go to <strong>"APIs & Services"</strong> → <strong>"OAuth consent screen"</strong></li>
+        <li>Choose <strong>"External"</strong> (or "Internal" if using Google Workspace)</li>
+        <li>Fill in required fields:
+          <ul>
+            <li><strong>App name:</strong> Lab Calendar Automation</li>
+            <li><strong>User support email:</strong> Your email</li>
+            <li><strong>Developer contact:</strong> Your email</li>
+          </ul>
+        </li>
+        <li>Click <strong>"Save and Continue"</strong> through scopes</li>
+        <li>On <strong>"Test users"</strong> page, click <strong>"+ Add Users"</strong></li>
+        <li>Add your email address</li>
+        <li>Complete the wizard</li>
+      </ol>
+    </div>
+
+    <div class="step">
+      <h3><span class="step-number">4</span> Create OAuth Credentials</h3>
+      <ol>
+        <li>Go to <strong>"APIs & Services"</strong> → <strong>"Credentials"</strong></li>
+        <li>Click <strong>"+ Create Credentials"</strong> → <strong>"OAuth client ID"</strong></li>
+        <li>Choose <strong>"Desktop app"</strong> as application type</li>
+        <li>Name it: "Desktop Client"</li>
+        <li>Click <strong>"Create"</strong></li>
+        <li>Click the <strong>download icon</strong> (⬇️) next to your new client ID</li>
+        <li>A JSON file will download</li>
+      </ol>
+    </div>
+
+    <div class="step">
+      <h3><span class="step-number">5</span> Add Credentials to Project</h3>
+      <p>Rename the downloaded file to exactly <code>credentials.json</code> and place it in your project root:</p>
+      <div class="code-block">
+/Users/gregorylazatin/Documents/College/Second-year/UTRA/GCal Automation/credentials.json
+      </div>
+      
+      <p><strong>Your project structure should look like:</strong></p>
+      <div class="code-block">
+GCal Automation/
+├── credentials.json    ← Add this file here
+├── src/
+├── public/
+├── docs/
+└── package.json
+      </div>
+    </div>
+
+    <div class="info">
+      <strong>🔒 Security Note:</strong> The <code>credentials.json</code> file is already in <code>.gitignore</code>, so it won't be committed to version control. Keep this file private!
+    </div>
+
+    <div class="step">
+      <h3><span class="step-number">6</span> Restart the Server</h3>
+      <p>After adding <code>credentials.json</code>:</p>
+      <ol>
+        <li>Stop the current server (Ctrl+C in terminal)</li>
+        <li>Restart it:
+          <div class="code-block">npm start</div>
+        </li>
+        <li>Visit <a href="http://localhost:3000">http://localhost:3000</a></li>
+        <li>You'll be redirected to authorize with Google</li>
+        <li>Complete the authorization flow</li>
+      </ol>
+    </div>
+
+    <div class="warning">
+      <strong>🏢 Using Organization's Google Workspace?</strong>
+      <p>If you don't have permission to create Google Cloud projects or enable APIs:</p>
+      <ul>
+        <li>Contact your IT administrator</li>
+        <li>Request access to Google Calendar API</li>
+        <li>Or use a personal Google account for development/testing</li>
+      </ul>
+      <p>You may need to wait for admin approval before proceeding.</p>
+    </div>
+
+    <div style="text-align: center; margin-top: 40px;">
+      <a href="/health" class="btn">Check Server Status</a>
+      <p style="margin-top: 20px; color: #6c757d;">
+        <a href="https://github.com/your-repo/docs/SETUP_GUIDE.md" target="_blank">Detailed Setup Guide</a> | 
+        <a href="mailto:support@example.com">Need Help?</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>

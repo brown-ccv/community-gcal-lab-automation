@@ -1,0 +1,260 @@
+import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { google } from 'googleapis';
+import fs from 'fs';
+import { createEvents, deleteEvents, deleteAllDemoEvents } from './calendar.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Configuration
+const SCOPES = ['https://www.googleapis.com/auth/calendar'];
+const TOKEN_PATH = path.join(__dirname, '..', 'token.json');
+const CREDENTIALS_PATH = path.join(__dirname, '..', 'credentials.json');
+const REDIRECT_URI = process.env.REDIRECT_URI || 'http://localhost:3000/oauth2callback';
+
+// Middleware
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// OAuth2 client setup
+let oAuth2Client = null;
+
+function getOAuth2Client() {
+  if (!fs.existsSync(CREDENTIALS_PATH)) {
+    throw new Error('credentials.json not found. Please add it to the project root.');
+  }
+  
+  const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf8'));
+  const { client_secret, client_id } = credentials.installed || credentials.web;
+  
+  return new google.auth.OAuth2(client_id, client_secret, REDIRECT_URI);
+}
+
+function isAuthorized() {
+  return fs.existsSync(TOKEN_PATH);
+}
+
+function getAuthorizedClient() {
+  const client = getOAuth2Client();
+  const token = JSON.parse(fs.readFileSync(TOKEN_PATH, 'utf8'));
+  client.setCredentials(token);
+  return client;
+}
+
+// Routes
+
+// Home page - main form
+app.get('/', (req, res) => {
+  // Check if credentials.json exists
+  if (!fs.existsSync(CREDENTIALS_PATH)) {
+    return res.sendFile(path.join(__dirname, '..', 'public', 'setup-required.html'));
+  }
+  
+  if (!isAuthorized()) {
+    return res.redirect('/authorize');
+  }
+  res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+});
+
+// Authorization flow
+app.get('/authorize', (req, res) => {
+  // Check if credentials.json exists
+  if (!fs.existsSync(CREDENTIALS_PATH)) {
+    return res.sendFile(path.join(__dirname, '..', 'public', 'setup-required.html'));
+  }
+  
+  try {
+    const client = getOAuth2Client();
+    const authUrl = client.generateAuthUrl({
+      access_type: 'offline',
+      scope: SCOPES,
+    });
+    res.redirect(authUrl);
+  } catch (error) {
+    res.status(500).send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Authorization Error</title>
+        <link rel="stylesheet" href="/styles.css">
+        <style>
+          .error-container { max-width: 600px; margin: 40px auto; padding: 20px; }
+          .error { background: #fee; border: 2px solid #fcc; padding: 20px; border-radius: 8px; }
+          h1 { color: #c00; }
+        </style>
+      </head>
+      <body>
+        <div class="error-container">
+          <div class="error">
+            <h1>⚠️ Authorization Error</h1>
+            <p><strong>Error:</strong> ${error.message}</p>
+            <p>Please check the setup guide in <code>docs/SETUP_GUIDE.md</code> for troubleshooting steps.</p>
+            <p style="margin-top: 20px;">
+              <a href="/" style="color: var(--primary-color);">← Back to home</a>
+            </p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `);
+  }
+});
+
+// OAuth callback
+app.get('/oauth2callback', async (req, res) => {
+  const code = req.query.code;
+  
+  if (!code) {
+    return res.status(400).send('No authorization code received.');
+  }
+  
+  try {
+    const client = getOAuth2Client();
+    const { tokens } = await client.getToken(code);
+    client.setCredentials(tokens);
+    
+    // Save token
+    fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens));
+    
+    res.redirect('/?authorized=true');
+  } catch (error) {
+    console.error('Error retrieving access token:', error);
+    res.status(500).send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Authorization Error</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 40px; max-width: 600px; margin: 0 auto; }
+          .error { background: #fee; border: 1px solid #fcc; padding: 20px; border-radius: 8px; }
+          h1 { color: #c00; }
+        </style>
+      </head>
+      <body>
+        <div class="error">
+          <h1>❌ Authorization Failed</h1>
+          <p>${error.message}</p>
+          <p><a href="/authorize">Try again</a></p>
+        </div>
+      </body>
+      </html>
+    `);
+  }
+});
+
+// Create events endpoint
+app.post('/create-events', async (req, res) => {
+  if (!isAuthorized()) {
+    return res.redirect('/authorize');
+  }
+  
+  const { baseDate, title, time, attendeeEmail, demoMode } = req.body;
+  
+  // Validation
+  if (!baseDate || !title || !attendeeEmail) {
+    return res.status(400).json({ error: 'Base date, title, and participant email are required.' });
+  }
+  
+  // Basic email validation
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(attendeeEmail)) {
+    return res.status(400).json({ error: 'Invalid email address format.' });
+  }
+  
+  try {
+    const auth = getAuthorizedClient();
+    const results = await createEvents(auth, {
+      baseDate,
+      title,
+      time: time || '09:00',
+      attendeeEmail: attendeeEmail,
+      calendarId: 'primary',
+      dryRun: false,
+      demoMode: demoMode === true || demoMode === 'true',
+    });
+    
+    res.json({ success: true, results, demoMode: demoMode === true || demoMode === 'true' });
+  } catch (error) {
+    console.error('Error creating events:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete events endpoint
+app.post('/delete-events', async (req, res) => {
+  if (!isAuthorized()) {
+    return res.redirect('/authorize');
+  }
+  
+  const { baseDate, title, attendeeEmail } = req.body;
+  
+  if (!baseDate || !title || !attendeeEmail) {
+    return res.status(400).json({ error: 'Base date, title, and attendee email are required.' });
+  }
+  
+  // Basic email validation
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(attendeeEmail)) {
+    return res.status(400).json({ error: 'Invalid email address format.' });
+  }
+  
+  try {
+    const auth = getAuthorizedClient();
+    const results = await deleteEvents(auth, {
+      baseDate,
+      title,
+      attendeeEmail,
+      calendarId: 'primary',
+    });
+    
+    res.json({ success: true, results });
+  } catch (error) {
+    console.error('Error deleting events:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Clear all demo events endpoint
+app.post('/clear-demo-events', async (req, res) => {
+  if (!isAuthorized()) {
+    return res.redirect('/authorize');
+  }
+  
+  try {
+    const auth = getAuthorizedClient();
+    const results = await deleteAllDemoEvents(auth, {
+      calendarId: 'primary',
+    });
+    
+    res.json({ 
+      success: true, 
+      deleted: results.deleted, 
+      errors: results.errors,
+      errorDetails: results.errorDetails 
+    });
+  } catch (error) {
+    console.error('Error clearing demo events:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Health check for Render
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', authorized: isAuthorized() });
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`\n✅ Server running at http://localhost:${PORT}`);
+  console.log(`\nOpen your browser and visit: http://localhost:${PORT}\n`);
+  
+  if (!isAuthorized()) {
+    console.log('⚠️  First-time setup: You will be redirected to authorize with Google Calendar.\n');
+  }
+});

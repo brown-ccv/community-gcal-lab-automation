@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lab Calendar Automation</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>📅 Lab Calendar Automation</h1>
+      <p class="subtitle">Create follow-up check-in events automatically</p>
+    </header>
+
+    <div id="alert" class="alert" style="display: none;"></div>
+
+    <main>
+      <div class="card">
+        <h2>Create Check-In Events</h2>
+        <p class="help-text">
+          This will create three calendar events: 1-day, 10-day, and 45-day check-ins from your base date.
+        </p>
+
+        <form id="create-form">
+          <div class="form-group">
+            <label for="baseDate">
+              Base Date <span class="required">*</span>
+              <span class="help-tooltip" title="The reference date for calculating follow-ups">ⓘ</span>
+            </label>
+            <input 
+              type="text" 
+              id="baseDate" 
+              name="baseDate" 
+              placeholder="MM/DD/YYYY (e.g., 11/10/2025)"
+              pattern="\d{1,2}/\d{1,2}/\d{4}"
+              required
+            >
+            <small class="help-text">Format: MM/DD/YYYY</small>
+          </div>
+
+          <div class="form-group">
+            <label for="title">
+              Participant ID or Event Name <span class="required">*</span>
+            </label>
+            <input 
+              type="text" 
+              id="title" 
+              name="title" 
+              placeholder="e.g., BURST-001"
+              required
+            >
+            <small class="help-text">This will appear in event titles (e.g., "BURST-001 - 10 day check-in")</small>
+          </div>
+
+          <div class="form-group">
+            <label for="time">
+              Start Time
+            </label>
+            <input 
+              type="text" 
+              id="time" 
+              name="time" 
+              placeholder="HH:MM (default: 09:00)"
+              pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]"
+            >
+            <small class="help-text">24-hour format (00:00 - 23:59). Leave blank for 09:00.</small>
+          </div>
+
+          <div class="form-group">
+            <label for="attendeeEmail">
+              Attendee Email <span class="required">*</span>
+            </label>
+            <input 
+              type="email" 
+              id="attendeeEmail" 
+              name="attendeeEmail" 
+              placeholder="participant@example.com"
+              required
+            >
+            <small class="help-text">Calendar invites will be sent to this email address.</small>
+          </div>
+
+          <div class="form-group">
+            <label style="display: flex; align-items: center; cursor: pointer; user-select: none;">
+              <input 
+                type="checkbox" 
+                id="demoMode" 
+                name="demoMode"
+                checked
+                style="margin-right: 10px; width: 18px; height: 18px; cursor: pointer;"
+              >
+              <span>
+                <strong>Demo Mode</strong> 
+                <span style="color: #666; font-weight: normal;">(Events marked for easy cleanup)</span>
+              </span>
+            </label>
+            <small class="help-text">When enabled, events are tagged as demo and can be bulk-deleted later. Recommended for testing.</small>
+          </div>
+
+          <div class="info-box">
+            <strong>Events to be created:</strong>
+            <ul>
+              <li><span class="event-preview" id="preview-1day">Your Title - 1 day check-in</span></li>
+              <li><span class="event-preview" id="preview-10day">Your Title - 10 day check-in</span></li>
+              <li><span class="event-preview" id="preview-45day">Your Title - 45 day check-in</span></li>
+            </ul>
+            <p><small>Duration: 30 minutes | Attendee: <span id="preview-email">participant@example.com</span></small></p>
+          </div>
+
+          <button type="submit" class="btn btn-primary" id="submit-btn">
+            Create Events
+          </button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>Delete Test Events</h2>
+        <p class="help-text">
+          Remove check-in events created with a specific base date, title, and attendee email.
+        </p>
+
+        <form id="delete-form">
+          <div class="form-group">
+            <label for="deleteBaseDate">
+              Base Date <span class="required">*</span>
+            </label>
+            <input 
+              type="text" 
+              id="deleteBaseDate" 
+              name="baseDate" 
+              placeholder="MM/DD/YYYY"
+              pattern="\d{1,2}/\d{1,2}/\d{4}"
+              required
+            >
+          </div>
+
+          <div class="form-group">
+            <label for="deleteTitle">
+              Participant ID or Event Name <span class="required">*</span>
+            </label>
+            <input 
+              type="text" 
+              id="deleteTitle" 
+              name="title" 
+              placeholder="e.g., BURST-001"
+              required
+            >
+          </div>
+
+          <div class="form-group">
+            <label for="deleteAttendeeEmail">
+              Attendee Email <span class="required">*</span>
+            </label>
+            <input 
+              type="email" 
+              id="deleteAttendeeEmail" 
+              name="attendeeEmail" 
+              placeholder="participant@example.com"
+              required
+            >
+            <small class="help-text">Must match the email used when creating the events.</small>
+          </div>
+
+          <button type="submit" class="btn btn-danger" id="delete-btn">
+            Delete Events
+          </button>
+        </form>
+      </div>
+
+      <div class="card" style="border: 2px solid #dc3545;">
+        <h2>🗑️ Clear All Demo Events</h2>
+        <p class="help-text">
+          Remove ALL events created in demo mode. This is useful for cleaning up after testing.
+        </p>
+        
+        <div class="warning" style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 15px 0; border-radius: 4px;">
+          <strong>⚠️ Warning:</strong> This will permanently delete all calendar events that were created with "Demo Mode" enabled. This action cannot be undone.
+        </div>
+
+        <button type="button" class="btn btn-danger" id="clear-demo-btn" style="background: #dc3545;">
+          Clear All Demo Events
+        </button>
+      </div>
+    </main>
+
+    <footer>
+      <p>
+        <a href="https://github.com/your-repo" target="_blank">Documentation</a> | 
+        <a href="mailto:gregory.lazatin2006@gmail.com">Support</a>
+      </p>
+      <p class="muted">Google Calendar Lab Automation • v0.1.0</p>
+    </footer>
+  </div>
+
+  <script src="/script.js"></script>
+</body>
+</html>

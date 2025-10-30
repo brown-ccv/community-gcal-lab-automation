@@ -1,0 +1,23 @@
+# Credentials files
+credentials.json
+token.json
+
+# Environment variables
+.env
+
+# Dependencies
+node_modules/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Render
+.render/

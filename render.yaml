@@ -1,0 +1,20 @@
+# Render.com deployment configuration
+# See: https://render.com/docs/yaml-spec
+
+services:
+  - type: web
+    name: gcal-lab-automation
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: REDIRECT_URI
+        sync: false
+        # Set this in Render dashboard after first deploy
+        # Format: https://your-app-name.onrender.com/oauth2callback
+    # Free tier configuration
+    plan: free
+    # Health check endpoint
+    healthCheckPath: /health
