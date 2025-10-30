@@ -107,7 +107,14 @@ document.getElementById('create-form')?.addEventListener('submit', async (e) => 
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ baseDate, title, time: time || '09:00', attendeeEmail, demoMode }),
+      redirect: 'manual', // Don't follow redirects automatically
     });
+    
+    // Handle redirect to authorization
+    if (response.type === 'opaqueredirect' || response.status === 302) {
+      window.location.href = '/authorize';
+      return;
+    }
     
     const data = await response.json();
     
@@ -196,7 +203,14 @@ document.getElementById('delete-form')?.addEventListener('submit', async (e) => 
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ baseDate, title, attendeeEmail }),
+      redirect: 'manual', // Don't follow redirects automatically
     });
+    
+    // Handle redirect to authorization
+    if (response.type === 'opaqueredirect' || response.status === 302) {
+      window.location.href = '/authorize';
+      return;
+    }
     
     const data = await response.json();
     
@@ -256,7 +270,14 @@ document.getElementById('clear-demo-btn')?.addEventListener('click', async () =>
       headers: {
         'Content-Type': 'application/json',
       },
+      redirect: 'manual', // Don't follow redirects automatically
     });
+    
+    // Handle redirect to authorization
+    if (response.type === 'opaqueredirect' || response.status === 302) {
+      window.location.href = '/authorize';
+      return;
+    }
     
     const data = await response.json();
     
