@@ -455,11 +455,24 @@ document.getElementById('delete-recent-btn').addEventListener('click', async fun
     }
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to delete events');
+      let errorMessage = 'Failed to delete events';
+      try {
+        const error = await response.json();
+        errorMessage = error.error || errorMessage;
+      } catch (e) {
+        // Response wasn't JSON, use status text
+        errorMessage = response.statusText || errorMessage;
+      }
+      throw new Error(errorMessage);
     }
 
-    const data = await response.json();
+    let data;
+    try {
+      data = await response.json();
+    } catch (e) {
+      console.error('Failed to parse JSON response:', e);
+      throw new Error('Server returned an invalid response. Please try again.');
+    }
     
     if (data.success) {
       const { results } = data;
