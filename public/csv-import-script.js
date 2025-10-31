@@ -147,6 +147,7 @@ async function importCSV() {
   }
   
   const time = document.getElementById('eventTime').value;
+  const demoModeChecked = document.getElementById('demoMode').checked;
   const importBtn = document.getElementById('importBtn');
   
   // Disable button
@@ -156,6 +157,7 @@ async function importCSV() {
   const formData = new FormData();
   formData.append('csvFile', currentPreviewData.file);
   formData.append('time', time);
+  formData.append('demoMode', demoModeChecked);
   
   try {
     if (IS_DEMO_MODE) {

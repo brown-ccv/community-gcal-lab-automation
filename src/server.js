@@ -335,10 +335,11 @@ app.post('/api/csv/import', upload.single('csvFile'), async (req, res) => {
     }
 
     const time = req.body.time || '09:00';
+    const demoMode = req.body.demoMode === 'true';
     const events = parseCSVFromBuffer(req.file.buffer);
     const auth = getAuthorizedClient();
 
-    const results = await createEventsFromCSV(auth, events, { time });
+    const results = await createEventsFromCSV(auth, events, { time, demoMode });
 
     res.json({
       success: true,

@@ -285,9 +285,10 @@ function buildCSVEventKey(participantId, date, column) {
  * @param {string} time - Default time for events (e.g., "09:00")
  * @param {string} calendarId - Calendar ID (default: 'primary')
  * @param {boolean} dryRun - If true, don't actually create events
+ * @param {boolean} demoMode - If true, mark events as demo for easy cleanup
  * @returns {Object} Results summary
  */
-export async function createEventsFromCSV(auth, events, { time = '09:00', calendarId = 'primary', dryRun = false }) {
+export async function createEventsFromCSV(auth, events, { time = '09:00', calendarId = 'primary', dryRun = false, demoMode = false }) {
   const calendar = google.calendar({ version: 'v3', auth });
   const results = {
     created: 0,
@@ -349,6 +350,7 @@ export async function createEventsFromCSV(auth, events, { time = '09:00', calend
             participantId: event.participantId,
             column: event.column,
             source: 'csv-import',
+            demoMode: demoMode ? 'true' : 'false',
           },
         },
       };
