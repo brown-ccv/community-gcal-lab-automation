@@ -227,25 +227,32 @@ export async function deleteAllDemoEvents(auth, { calendarId = 'primary' } = {})
   const results = { deleted: 0, errors: 0, errorDetails: [] };
 
   try {
-    // Search for all events with our demo source marker
-    const response = await calendar.events.list({
-      calendarId: calendarId,
-      privateExtendedProperty: 'source=gcal-automation-demo',
-      maxResults: 2500, // Google Calendar API max
-      singleEvents: true,
-    });
+    // Search for events from both manual entry and CSV import
+    const sources = ['gcal-automation-demo', 'csv-import'];
+    let allDemoEvents = [];
 
-    const events = response.data.items || [];
-    
-    // Filter for demo mode events only
-    const demoEvents = events.filter(event => 
-      event.extendedProperties?.private?.demoMode === 'true'
-    );
+    for (const source of sources) {
+      const response = await calendar.events.list({
+        calendarId: calendarId,
+        privateExtendedProperty: `source=${source}`,
+        maxResults: 2500, // Google Calendar API max
+        singleEvents: true,
+      });
 
-    console.log(`Found ${demoEvents.length} demo events to delete`);
+      const events = response.data.items || [];
+      
+      // Filter for demo mode events only
+      const demoEvents = events.filter(event => 
+        event.extendedProperties?.private?.demoMode === 'true'
+      );
+
+      allDemoEvents = allDemoEvents.concat(demoEvents);
+    }
+
+    console.log(`Found ${allDemoEvents.length} demo events to delete`);
 
     // Delete each demo event
-    for (const event of demoEvents) {
+    for (const event of allDemoEvents) {
       try {
         await calendar.events.delete({
           calendarId: calendarId,
