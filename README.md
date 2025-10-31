@@ -11,11 +11,12 @@ Automated creation of follow-up check-in calendar events for lab participants.
 ## Features
 
 - 📅 **Batch event creation**: Creates multiple follow-up check-ins (1 day, 10 day, 45 day) from a single base date
-- 🔐 **OAuth2 authentication**: Secure Google Calendar API access
+- � **CSV bulk import**: Upload FileMaker exports to create events for multiple participants at once
+- �🔐 **OAuth2 authentication**: Secure Google Calendar API access
 - 🔄 **Idempotent**: Won't create duplicate events if run multiple times
 - 🗑️ **Easy cleanup**: Delete test events with a simple command
 - ⏰ **Timezone aware**: Uses America/New_York timezone
-- ✉️ **Automatic invites**: Sends calendar invites to specified attendee
+- ✉️ **Automatic invites**: Sends calendar invites to specified attendee (or create events without invites)
 
 ## Setup
 
@@ -79,7 +80,8 @@ npm run start:demo
 Then open your browser and visit: **http://localhost:3000**
 
 You'll see a clean web form where you can:
-- Enter base date, participant ID, and time
+- **Manual Entry**: Enter base date, participant ID, and time for single participants
+- **CSV Import**: Upload FileMaker CSV exports to create events for multiple participants at once
 - See a preview of events to be created
 - Create or delete events with one click
 - A banner will indicate if you're in Demo or Live mode
@@ -117,6 +119,40 @@ This creates:
 - "BURST-001 - 45 day check-in" on 12/25/2025 at 14:30
 
 All events are 30 minutes long and invite `gregory.lazatin2006@gmail.com`.
+
+### CSV Import (Bulk Creation)
+
+For creating events for multiple participants from FileMaker exports:
+
+**CLI Mode:**
+```bash
+npm run csv-import
+```
+
+You'll be prompted to:
+- Specify CSV file path (defaults to `src/data/P16_FM_dates.csv`)
+- Set event time (defaults to 09:00)
+- Choose dry run (preview) or real import
+
+**Web Interface:**
+1. Navigate to http://localhost:3000
+2. Click "📊 Bulk CSV Import →"
+3. Upload or drag-drop your CSV file
+4. Review the summary and sample events
+5. Click "Create Events"
+
+**CSV Format:**
+The tool expects FileMaker P16_FM_dates.csv format with columns:
+- `ID` - Participant identifier
+- `IDSTATUS` - Must be "Active"
+- `B1STARTMIN10`, `B1STARTMIN1`, `B1STARTDATE` - BURST 1 dates
+- `B2STARTMIN10`, `B2STARTMIN1`, `B2STARTDATE` - BURST 2 dates
+- `B3STARTMIN10`, `B3STARTMIN1`, `B3STARTDATE` - BURST 3 dates
+- `B4STARTMIN10`, `B4STARTMIN1`, `B4STARTDATE` - BURST 4 dates
+
+Events are created without attendees (calendar-only events).
+
+See `docs/CSV_IMPORT_IMPLEMENTATION.md` for detailed documentation.
 
 ### CLI Delete Mode
 
