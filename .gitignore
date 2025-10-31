@@ -5,6 +5,9 @@ token.json
 # Environment variables
 .env
 
+# Data
+src/data
+
 # Dependencies
 node_modules/
 

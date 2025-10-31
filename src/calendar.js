@@ -268,3 +268,117 @@ export async function deleteAllDemoEvents(auth, { calendarId = 'primary' } = {})
     throw new Error(`Failed to list demo events: ${error.message}`);
   }
 }
+
+/**
+ * Build idempotency key for CSV event
+ */
+function buildCSVEventKey(participantId, date, column) {
+  // Format: "701_11-2-2025_B2STARTMIN10"
+  const datePart = date.replace(/\//g, '-');
+  return `${participantId}_${datePart}_${column}`;
+}
+
+/**
+ * Create calendar events from CSV data
+ * @param {Object} auth - Google OAuth2 client
+ * @param {Array} events - Array of event objects from CSV parser
+ * @param {string} time - Default time for events (e.g., "09:00")
+ * @param {string} calendarId - Calendar ID (default: 'primary')
+ * @param {boolean} dryRun - If true, don't actually create events
+ * @returns {Object} Results summary
+ */
+export async function createEventsFromCSV(auth, events, { time = '09:00', calendarId = 'primary', dryRun = false }) {
+  const calendar = google.calendar({ version: 'v3', auth });
+  const results = {
+    created: 0,
+    skipped: 0,
+    errors: 0,
+    details: [],
+  };
+
+  for (const event of events) {
+    const eventKey = buildCSVEventKey(event.participantId, event.date, event.column);
+    
+    try {
+      // Check if event already exists (idempotency)
+      const existingEvent = await findEventByKey(calendar, calendarId, eventKey);
+      
+      if (existingEvent) {
+        results.skipped++;
+        results.details.push({
+          type: 'skipped',
+          participantId: event.participantId,
+          title: event.title,
+          date: event.date,
+          reason: 'Event already exists',
+        });
+        continue;
+      }
+
+      if (dryRun) {
+        results.details.push({
+          type: 'dry-run',
+          participantId: event.participantId,
+          title: event.title,
+          date: event.date,
+          time,
+        });
+        continue;
+      }
+
+      // Build event object
+      const startDateTime = buildDateTime(event.date, time);
+      const startDate = new Date(startDateTime);
+      const endDate = new Date(startDate.getTime() + DEFAULT_DURATION_MINUTES * 60000);
+      const endDateTime = endDate.toISOString().slice(0, 19);
+
+      const calendarEvent = {
+        summary: `${event.title} - Participant ${event.participantId}`,
+        description: `Participant ID: ${event.participantId}\nColumn: ${event.column}`,
+        start: {
+          dateTime: startDateTime,
+          timeZone: TIMEZONE,
+        },
+        end: {
+          dateTime: endDateTime,
+          timeZone: TIMEZONE,
+        },
+        extendedProperties: {
+          private: {
+            idempotencyKey: eventKey,
+            participantId: event.participantId,
+            column: event.column,
+            source: 'csv-import',
+          },
+        },
+      };
+
+      // Create the event
+      const response = await calendar.events.insert({
+        calendarId,
+        resource: calendarEvent,
+      });
+
+      results.created++;
+      results.details.push({
+        type: 'created',
+        participantId: event.participantId,
+        title: event.title,
+        date: event.date,
+        eventId: response.data.id,
+      });
+
+    } catch (error) {
+      results.errors++;
+      results.details.push({
+        type: 'error',
+        participantId: event.participantId,
+        title: event.title,
+        date: event.date,
+        error: error.message,
+      });
+    }
+  }
+
+  return results;
+}
