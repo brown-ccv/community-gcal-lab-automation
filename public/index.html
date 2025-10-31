@@ -191,6 +191,27 @@
           Clear All Demo Events
         </button>
       </div>
+
+      <div class="card" style="border: 2px solid #ff6b6b;">
+        <h2>🧹 Delete Recent Events (Debug Tool)</h2>
+        <p class="help-text">
+          Delete ALL events created by this tool in the last N hours. Useful for cleaning up test imports.
+        </p>
+        
+        <div class="warning" style="background: #ffe0e0; border-left: 4px solid #ff6b6b; padding: 15px; margin: 15px 0; border-radius: 4px;">
+          <strong>🚨 Debug Tool:</strong> This will delete ALL events (manual and CSV) created by this automation in the specified time period, regardless of demo mode. Use with caution!
+        </div>
+
+        <div class="form-group">
+          <label for="deleteHours">Hours to look back:</label>
+          <input type="number" id="deleteHours" value="24" min="1" max="168" />
+          <small class="help-text">Events created in the last N hours will be deleted (max: 168 = 1 week)</small>
+        </div>
+
+        <button type="button" class="btn btn-danger" id="delete-recent-btn" style="background: #ff6b6b;">
+          Delete Recent Events
+        </button>
+      </div>
     </main>
 
     <footer>

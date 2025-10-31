@@ -422,6 +422,81 @@ document.getElementById('clear-demo-btn')?.addEventListener('click', async () =>
   }
 });
 
+// Delete recent events handler
+document.getElementById('delete-recent-btn').addEventListener('click', async function() {
+  const hours = parseInt(document.getElementById('deleteHours').value) || 24;
+  
+  if (!confirm(`⚠️ This will DELETE ALL events created by this tool in the last ${hours} hours.\n\nThis includes both manual entries and CSV imports, regardless of demo mode.\n\nAre you sure you want to continue?`)) {
+    return;
+  }
+
+  const deleteBtn = this;
+  const originalText = deleteBtn.textContent;
+  deleteBtn.disabled = true;
+  deleteBtn.textContent = 'Deleting...';
+
+  try {
+    if (IS_DEMO_MODE) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      showAlert(`✅ [DEMO] Would have deleted recent automation events from the last ${hours} hours`, 'success');
+      return;
+    }
+
+    const response = await fetch('/api/delete-recent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hours }),
+      redirect: 'manual'
+    });
+
+    if (response.status === 302 || response.status === 0) {
+      window.location.href = '/authorize';
+      return;
+    }
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to delete events');
+    }
+
+    const data = await response.json();
+    
+    if (data.success) {
+      const { results } = data;
+      
+      let message = '';
+      if (results.deleted > 0) {
+        message = `✅ Successfully deleted ${results.deleted} event(s) from the last ${hours} hours.\n\n`;
+        if (results.eventsFound.length > 0) {
+          message += 'Deleted events:\n';
+          results.eventsFound.slice(0, 5).forEach(e => {
+            message += `• ${e.summary}\n`;
+          });
+          if (results.eventsFound.length > 5) {
+            message += `... and ${results.eventsFound.length - 5} more`;
+          }
+        }
+      } else {
+        message = `ℹ️ No automation events found in the last ${hours} hours.`;
+      }
+      
+      if (results.errors > 0) {
+        message += `\n\n⚠️ ${results.errors} event(s) failed to delete.`;
+        console.error('Error details:', results.errorDetails);
+      }
+      
+      showAlert(message, results.errors > 0 ? 'error' : 'success');
+    }
+    
+  } catch (error) {
+    console.error('Error:', error);
+    showAlert(`❌ Error: ${error.message}`, 'error');
+  } finally {
+    deleteBtn.disabled = false;
+    deleteBtn.textContent = originalText;
+  }
+});
+
 // Show success message if redirected after authorization
 const urlParams = new URLSearchParams(window.location.search);
 if (urlParams.get('authorized') === 'true') {

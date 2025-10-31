@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import { google } from 'googleapis';
 import fs from 'fs';
 import multer from 'multer';
-import { createEvents, deleteEvents, deleteAllDemoEvents, createEventsFromCSV } from './calendar.js';
+import { createEvents, deleteEvents, deleteAllDemoEvents, createEventsFromCSV, deleteRecentEvents } from './calendar.js';
 import { parseCSVFromBuffer, getEventSummary } from './csvParser.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -347,6 +347,35 @@ app.post('/api/csv/import', upload.single('csvFile'), async (req, res) => {
     });
   } catch (error) {
     console.error('Error importing CSV:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete recent events (debugging tool)
+app.post('/api/delete-recent', async (req, res) => {
+  try {
+    if (DEMO_MODE) {
+      return res.json({
+        success: true,
+        demo: true,
+        message: '[DEMO] Would have deleted recent automation events',
+      });
+    }
+
+    if (!isAuthorized()) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const hours = parseInt(req.body.hours) || 24;
+    const auth = getAuthorizedClient();
+    const results = await deleteRecentEvents(auth, { hours });
+
+    res.json({
+      success: true,
+      results,
+    });
+  } catch (error) {
+    console.error('Error deleting recent events:', error);
     res.status(500).json({ error: error.message });
   }
 });

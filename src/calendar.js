@@ -277,6 +277,77 @@ export async function deleteAllDemoEvents(auth, { calendarId = 'primary' } = {})
 }
 
 /**
+ * Delete all events created in the last N hours (debugging tool)
+ * @param {OAuth2Client} auth - Authorized Google OAuth2 client
+ * @param {Object} options
+ * @param {number} options.hours - Number of hours to look back (default: 24)
+ * @param {string} options.calendarId - Calendar ID (default: 'primary')
+ * @returns {Promise<Object>} Results with deleted count
+ */
+export async function deleteRecentEvents(auth, { hours = 24, calendarId = 'primary' } = {}) {
+  const calendar = google.calendar({ version: 'v3', auth });
+  const results = { deleted: 0, errors: 0, errorDetails: [], eventsFound: [] };
+
+  try {
+    // Calculate time range
+    const now = new Date();
+    const timeMin = new Date(now.getTime() - hours * 60 * 60 * 1000);
+    
+    console.log(`Searching for events created after ${timeMin.toISOString()}`);
+
+    // Get all events in the calendar
+    const response = await calendar.events.list({
+      calendarId: calendarId,
+      timeMin: timeMin.toISOString(),
+      maxResults: 2500,
+      singleEvents: true,
+      orderBy: 'startTime',
+    });
+
+    const events = response.data.items || [];
+    
+    // Filter for events from our automation (both manual and CSV)
+    const automationEvents = events.filter(event => {
+      const source = event.extendedProperties?.private?.source;
+      return source === 'gcal-automation-demo' || source === 'csv-import';
+    });
+
+    console.log(`Found ${automationEvents.length} automation events in the last ${hours} hours`);
+
+    // Store event summaries for reporting
+    results.eventsFound = automationEvents.map(e => ({
+      id: e.id,
+      summary: e.summary,
+      start: e.start.dateTime || e.start.date,
+      source: e.extendedProperties?.private?.source,
+    }));
+
+    // Delete each event
+    for (const event of automationEvents) {
+      try {
+        await calendar.events.delete({
+          calendarId: calendarId,
+          eventId: event.id,
+          sendUpdates: 'all',
+        });
+        results.deleted++;
+      } catch (error) {
+        results.errors++;
+        results.errorDetails.push({
+          eventId: event.id,
+          summary: event.summary,
+          error: error.message,
+        });
+      }
+    }
+
+    return results;
+  } catch (error) {
+    throw new Error(`Failed to delete recent events: ${error.message}`);
+  }
+}
+
+/**
  * Build idempotency key for CSV event
  */
 function buildCSVEventKey(participantId, date, column) {
