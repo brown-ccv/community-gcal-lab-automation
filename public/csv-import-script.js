@@ -1,0 +1,246 @@
+// Global state
+let IS_DEMO_MODE = false;
+let currentPreviewData = null;
+
+// Check demo mode on page load
+async function checkDemoMode() {
+  try {
+    const response = await fetch('/api/demo-mode');
+    const data = await response.json();
+    IS_DEMO_MODE = data.demoMode;
+    
+    const banner = document.getElementById('mode-banner');
+    if (IS_DEMO_MODE) {
+      banner.innerHTML = '<strong>🧪 Demo Version</strong> - No actual calendar events will be created';
+      banner.className = 'mode-banner demo';
+      banner.style.cssText = 'background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px; text-align: center; border-radius: 8px; margin-bottom: 20px;';
+    } else {
+      banner.innerHTML = '<strong>✅ Live Mode</strong> - Connected to Google Calendar';
+      banner.className = 'mode-banner live';
+      banner.style.cssText = 'background: linear-gradient(135deg, #34d399 0%, #10b981 100%); color: white; padding: 12px; text-align: center; border-radius: 8px; margin-bottom: 20px;';
+    }
+  } catch (error) {
+    console.error('Failed to check demo mode:', error);
+  }
+}
+
+checkDemoMode();
+
+// File upload handling
+const uploadArea = document.getElementById('uploadArea');
+const fileInput = document.getElementById('fileInput');
+const previewSection = document.getElementById('previewSection');
+
+uploadArea.addEventListener('click', () => {
+  fileInput.click();
+});
+
+uploadArea.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  uploadArea.classList.add('dragover');
+});
+
+uploadArea.addEventListener('dragleave', () => {
+  uploadArea.classList.remove('dragover');
+});
+
+uploadArea.addEventListener('drop', (e) => {
+  e.preventDefault();
+  uploadArea.classList.remove('dragover');
+  
+  const files = e.dataTransfer.files;
+  if (files.length > 0) {
+    handleFile(files[0]);
+  }
+});
+
+fileInput.addEventListener('change', (e) => {
+  if (e.target.files.length > 0) {
+    handleFile(e.target.files[0]);
+  }
+});
+
+async function handleFile(file) {
+  if (!file.name.endsWith('.csv')) {
+    showAlert('Please upload a CSV file', 'error');
+    return;
+  }
+  
+  const formData = new FormData();
+  formData.append('csvFile', file);
+  
+  try {
+    showAlert('📖 Parsing CSV file...', 'info');
+    
+    const response = await fetch('/api/csv/preview', {
+      method: 'POST',
+      body: formData,
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to parse CSV');
+    }
+    
+    const data = await response.json();
+    currentPreviewData = { file, data };
+    
+    displayPreview(data);
+    hideAlert();
+    
+  } catch (error) {
+    showAlert(`Error: ${error.message}`, 'error');
+  }
+}
+
+function displayPreview(data) {
+  // Show preview section
+  previewSection.classList.add('show');
+  uploadArea.style.display = 'none';
+  
+  // Update stats
+  document.getElementById('totalParticipants').textContent = data.summary.totalParticipants;
+  document.getElementById('totalEvents').textContent = data.summary.totalEvents;
+  
+  // Update event types list
+  const eventTypesList = document.getElementById('eventTypesList');
+  eventTypesList.innerHTML = '';
+  
+  for (const [type, count] of Object.entries(data.summary.eventsByType)) {
+    const item = document.createElement('div');
+    item.className = 'event-type-item';
+    item.innerHTML = `
+      <span>${type}</span>
+      <strong>${count}</strong>
+    `;
+    eventTypesList.appendChild(item);
+  }
+  
+  // Update sample events
+  const sampleEvents = document.getElementById('sampleEvents');
+  sampleEvents.innerHTML = '';
+  
+  for (const event of data.sampleEvents) {
+    const eventDiv = document.createElement('div');
+    eventDiv.className = 'sample-event';
+    eventDiv.innerHTML = `
+      <div class="sample-event-title">${event.title}</div>
+      <div class="sample-event-meta">
+        Participant: ${event.participantId} | Date: ${event.date}
+      </div>
+    `;
+    sampleEvents.appendChild(eventDiv);
+  }
+}
+
+function resetUpload() {
+  uploadArea.style.display = 'block';
+  previewSection.classList.remove('show');
+  fileInput.value = '';
+  currentPreviewData = null;
+}
+
+async function importCSV() {
+  if (!currentPreviewData) {
+    showAlert('No file selected', 'error');
+    return;
+  }
+  
+  const time = document.getElementById('eventTime').value;
+  const importBtn = document.getElementById('importBtn');
+  
+  // Disable button
+  importBtn.disabled = true;
+  importBtn.textContent = 'Importing...';
+  
+  const formData = new FormData();
+  formData.append('csvFile', currentPreviewData.file);
+  formData.append('time', time);
+  
+  try {
+    if (IS_DEMO_MODE) {
+      // Simulate delay
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const { summary } = currentPreviewData.data;
+      const message = `✅ [DEMO] Would have created ${summary.totalEvents} events for ${summary.totalParticipants} participants at ${time}\n\n` +
+                     `ℹ️ This is a demo interface. Run with 'npm start' for full functionality.`;
+      
+      showAlert(message, 'success');
+      
+      // Reset after showing message
+      setTimeout(() => {
+        resetUpload();
+        importBtn.disabled = false;
+        importBtn.textContent = 'Create Events';
+      }, 3000);
+      
+      return;
+    }
+    
+    const response = await fetch('/api/csv/import', {
+      method: 'POST',
+      body: formData,
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to import CSV');
+    }
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      const { results } = result;
+      const message = `✅ Import complete!\n\n` +
+                     `• Created: ${results.created}\n` +
+                     `• Skipped (already exist): ${results.skipped}\n` +
+                     `• Errors: ${results.errors}`;
+      
+      showAlert(message, 'success');
+      
+      // Reset after showing message
+      setTimeout(() => {
+        resetUpload();
+      }, 3000);
+    }
+    
+  } catch (error) {
+    showAlert(`Error: ${error.message}`, 'error');
+  } finally {
+    importBtn.disabled = false;
+    importBtn.textContent = 'Create Events';
+  }
+}
+
+function showAlert(message, type) {
+  const alertBox = document.getElementById('alertBox');
+  alertBox.className = `alert alert-${type}`;
+  
+  // Create message div with pre-line formatting
+  const messageDiv = document.createElement('div');
+  messageDiv.style.whiteSpace = 'pre-line';
+  messageDiv.textContent = message;
+  
+  // Create close button
+  const closeBtn = document.createElement('span');
+  closeBtn.innerHTML = '×';
+  closeBtn.style.cssText = 'position: absolute; top: 10px; right: 15px; font-size: 24px; cursor: pointer; opacity: 0.7;';
+  closeBtn.onmouseover = () => closeBtn.style.opacity = '1';
+  closeBtn.onmouseout = () => closeBtn.style.opacity = '0.7';
+  closeBtn.onclick = hideAlert;
+  
+  alertBox.innerHTML = '';
+  alertBox.style.position = 'relative';
+  alertBox.appendChild(closeBtn);
+  alertBox.appendChild(messageDiv);
+  alertBox.style.display = 'block';
+  
+  // Auto-hide after 8 seconds
+  setTimeout(hideAlert, 8000);
+}
+
+function hideAlert() {
+  const alertBox = document.getElementById('alertBox');
+  alertBox.style.display = 'none';
+}

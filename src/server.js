@@ -3,7 +3,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { google } from 'googleapis';
 import fs from 'fs';
-import { createEvents, deleteEvents, deleteAllDemoEvents } from './calendar.js';
+import multer from 'multer';
+import { createEvents, deleteEvents, deleteAllDemoEvents, createEventsFromCSV } from './calendar.js';
+import { parseCSVFromBuffer, getEventSummary } from './csvParser.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,6 +30,19 @@ console.log('Demo mode:', DEMO_MODE ? 'ENABLED (no real API calls)' : 'DISABLED 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// Configure multer for file uploads
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only CSV files are allowed'));
+    }
+  }
+});
 
 // OAuth2 client setup
 let oAuth2Client = null;
@@ -270,6 +285,67 @@ app.post('/clear-demo-events', async (req, res) => {
     });
   } catch (error) {
     console.error('Error clearing demo events:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// CSV Import - Preview endpoint
+app.post('/api/csv/preview', upload.single('csvFile'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const events = parseCSVFromBuffer(req.file.buffer);
+    const summary = getEventSummary(events);
+
+    res.json({
+      success: true,
+      summary,
+      sampleEvents: events.slice(0, 10), // Send first 10 events as preview
+    });
+  } catch (error) {
+    console.error('Error previewing CSV:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// CSV Import - Create events endpoint
+app.post('/api/csv/import', upload.single('csvFile'), async (req, res) => {
+  try {
+    if (DEMO_MODE) {
+      // Demo mode: simulate import
+      const events = parseCSVFromBuffer(req.file.buffer);
+      const summary = getEventSummary(events);
+      
+      return res.json({
+        success: true,
+        demo: true,
+        message: `[DEMO] Would have created ${summary.totalEvents} events for ${summary.totalParticipants} participants`,
+        summary,
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    if (!isAuthorized()) {
+      return res.status(401).json({ error: 'Not authorized. Please authorize first.' });
+    }
+
+    const time = req.body.time || '09:00';
+    const events = parseCSVFromBuffer(req.file.buffer);
+    const auth = getAuthorizedClient();
+
+    const results = await createEventsFromCSV(auth, events, { time });
+
+    res.json({
+      success: true,
+      results,
+    });
+  } catch (error) {
+    console.error('Error importing CSV:', error);
     res.status(500).json({ error: error.message });
   }
 });

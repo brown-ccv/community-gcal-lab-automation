@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CSV Import - BURST Calendar Automation</title>
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    .upload-area {
+      border: 2px dashed #6366f1;
+      border-radius: 8px;
+      padding: 40px;
+      text-align: center;
+      background: #f8f9ff;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    
+    .upload-area:hover {
+      background: #f0f1ff;
+      border-color: #4f46e5;
+    }
+    
+    .upload-area.dragover {
+      background: #e0e7ff;
+      border-color: #4f46e5;
+    }
+    
+    .file-input {
+      display: none;
+    }
+    
+    .upload-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+    
+    .preview-section {
+      display: none;
+      margin-top: 24px;
+    }
+    
+    .preview-section.show {
+      display: block;
+    }
+    
+    .summary-card {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    
+    .summary-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    
+    .stat-item {
+      text-align: center;
+    }
+    
+    .stat-value {
+      font-size: 32px;
+      font-weight: bold;
+      color: #6366f1;
+    }
+    
+    .stat-label {
+      font-size: 14px;
+      color: #666;
+      margin-top: 4px;
+    }
+    
+    .event-type-list {
+      margin-top: 16px;
+    }
+    
+    .event-type-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: white;
+      border-radius: 4px;
+      margin-bottom: 8px;
+    }
+    
+    .sample-events {
+      margin-top: 16px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    
+    .sample-event {
+      padding: 12px;
+      background: white;
+      border-left: 4px solid #6366f1;
+      margin-bottom: 8px;
+      border-radius: 4px;
+    }
+    
+    .sample-event-title {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    
+    .sample-event-meta {
+      font-size: 14px;
+      color: #666;
+    }
+    
+    .time-selector {
+      margin: 16px 0;
+    }
+    
+    .nav-links {
+      margin-bottom: 24px;
+    }
+    
+    .nav-links a {
+      color: #6366f1;
+      text-decoration: none;
+      margin-right: 16px;
+    }
+    
+    .nav-links a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="mode-banner"></div>
+    
+    <div class="nav-links">
+      <a href="/">← Back to Manual Entry</a>
+    </div>
+    
+    <div class="card">
+      <h1>📊 CSV Import</h1>
+      <p>Upload a FileMaker export CSV to create calendar events in bulk</p>
+      
+      <div class="upload-area" id="uploadArea">
+        <div class="upload-icon">📁</div>
+        <h3>Click to upload or drag and drop</h3>
+        <p>CSV files only (max 5MB)</p>
+        <input type="file" id="fileInput" class="file-input" accept=".csv" />
+      </div>
+      
+      <div class="preview-section" id="previewSection">
+        <h2>📋 Import Preview</h2>
+        
+        <div class="summary-card">
+          <h3>Summary</h3>
+          <div class="summary-stats">
+            <div class="stat-item">
+              <div class="stat-value" id="totalParticipants">0</div>
+              <div class="stat-label">Participants</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value" id="totalEvents">0</div>
+              <div class="stat-label">Total Events</div>
+            </div>
+          </div>
+          
+          <div class="event-type-list">
+            <h4>Events by Type:</h4>
+            <div id="eventTypesList"></div>
+          </div>
+        </div>
+        
+        <div class="time-selector">
+          <label for="eventTime">⏰ Event Time:</label>
+          <input type="time" id="eventTime" value="09:00" />
+          <small>(All events will be created at this time)</small>
+        </div>
+        
+        <div class="summary-card">
+          <h3>Sample Events (first 10)</h3>
+          <div class="sample-events" id="sampleEvents"></div>
+        </div>
+        
+        <div class="button-group">
+          <button type="button" class="btn btn-secondary" onclick="resetUpload()">Cancel</button>
+          <button type="button" class="btn btn-primary" id="importBtn" onclick="importCSV()">Create Events</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div id="alertBox" class="alert" style="display: none;"></div>
+  
+  <script src="/csv-import-script.js"></script>
+</body>
+</html>
