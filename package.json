@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "DEMO_MODE=false node src/server.js",
-    "start:demo": "DEMO_MODE=true node src/server.js",
+    "start": "node start-live.js",
+    "start:demo": "node start-demo.js",
     "cli": "node src/cli.js",
     "csv-import": "node src/csvImport.js",
     "dev": "node --watch src/server.js"
