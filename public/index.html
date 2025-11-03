@@ -9,11 +9,11 @@
 <body>
   <div class="container">
     <header>
-      <h1>📅 Lab Calendar Automation</h1>
+      <h1>Lab Calendar Automation</h1>
       <p class="subtitle">Create follow-up check-in events automatically</p>
       <div style="margin-top: 16px;">
         <a href="/csv-import.html" class="btn btn-secondary" style="display: inline-block;">
-          📊 Bulk CSV Import
+          Bulk CSV Import
         </a>
       </div>
     </header>
@@ -177,20 +177,13 @@
         </form>
       </div>
 
-      <div class="card" style="border: 2px solid #dc3545;">
-        <h2>🗑️ Clear All Demo Events</h2>
-        <p class="help-text">
-          Remove ALL events created in demo mode. This is useful for cleaning up after testing.
-        </p>
-        
-        <div class="warning" style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 15px 0; border-radius: 4px;">
-          <strong>⚠️ Warning:</strong> This will permanently delete all calendar events that were created with "Demo Mode" enabled. This action cannot be undone.
-        </div>
-
-        <button type="button" class="btn btn-danger" id="clear-demo-btn" style="background: #dc3545;">
-          Clear All Demo Events
-        </button>
-      </div>
+            <!-- Clear Demo Events Section -->
+      <div class="section">
+        <h2>Clear All Demo Events</h2>
+        <p>Remove all events that were created with "Demo Mode" enabled.</p>
+        <div class="delete-section">
+          <p class="warning-text">
+            <strong>Warning:</strong> This will permanently delete all calendar events that were created with "Demo Mode" enabled. This action cannot be undone.
 
       <div class="card" style="border: 2px solid #ff6b6b;">
         <h2>🧹 Delete Recent Events (Debug Tool)</h2>

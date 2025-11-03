@@ -17,14 +17,23 @@ let IS_DEMO_MODE = true;
       if (IS_DEMO_MODE) {
         banner.style.backgroundColor = '#e3f2fd';
         banner.style.borderLeft = '4px solid #2196f3';
-        banner.innerHTML = `
-          <strong>ℹ️ Demo Version</strong>
-          <p style="margin: 0.5rem 0 0 0;">
-            This is a demonstration interface showcasing the calendar automation tool's capabilities. 
-            <strong>No actual calendar events will be created from this hosted version.</strong> 
-            For full functionality, run <code>npm start</code> locally with proper Google Calendar API credentials.
-          </p>
+        const modeDisplay = document.getElementById('demo-mode-display');
+    if (modeDisplay) {
+      if (IS_DEMO_MODE) {
+        modeDisplay.innerHTML = `
+          <strong>Demo Version</strong>
+          <p style="margin: 5px 0 0 0; font-size: 14px;">Events will be simulated. No actual calendar modifications.</p>
         `;
+        modeDisplay.className = 'demo-mode-banner demo';
+      } else {
+        modeDisplay.innerHTML = `
+          <strong>Live Mode</strong>
+          <p style="margin: 5px 0 0 0; font-size: 14px;">Connected to Google Calendar API</p>
+        `;
+        modeDisplay.className = 'demo-mode-banner live';
+      }
+      modeDisplay.style.display = 'block';
+    }
       } else {
         banner.style.backgroundColor = '#e8f5e9';
         banner.style.borderLeft = '4px solid #4caf50';
@@ -44,7 +53,7 @@ let IS_DEMO_MODE = true;
 })();
 
 // Show alert message
-function showAlert(message, type = 'success') {
+function showAlert(message, type = 'success', persist = false) {
   const alertDiv = document.getElementById('alert');
   alertDiv.className = `alert alert-${type}`;
   
@@ -66,8 +75,8 @@ function showAlert(message, type = 'success') {
   alertDiv.style.display = 'block';
   alertDiv.style.position = 'relative';
   
-  // Auto-hide after 8 seconds for success messages
-  if (type === 'success') {
+  // Auto-hide after 8 seconds for success messages (unless persist is true)
+  if (type === 'success' && !persist) {
     setTimeout(() => {
       alertDiv.style.display = 'none';
     }, 8000);
@@ -187,20 +196,20 @@ document.getElementById('create-form')?.addEventListener('submit', async (e) => 
       const eventDates = calculateEventDates(baseDate);
       const eventTime = time || '09:00';
       
-      let message = `✅ [DEMO] Would have created 3 events for "${title}":\n\n`;
+      let message = `[DEMO] Would have created 3 events for "${title}":\n\n`;
       
       eventDates.forEach(ed => {
-        message += `📅 ${title} - ${ed.label} check-in\n`;
+        message += `${title} - ${ed.label} check-in\n`;
         message += `   Date: ${ed.date} at ${eventTime}\n`;
         message += `   Duration: 30 minutes\n`;
         message += `   Attendee: ${attendeeEmail}\n`;
         message += `   Description: Automated check-in event created for ${title}\n\n`;
       });
       
-      message += `${demoMode ? '🏷️  Demo mode: ON (events can be bulk-deleted)\n\n' : ''}`;
-      message += `ℹ️ This is a demo interface. Run with 'npm start' for full functionality.`;
+      message += `${demoMode ? 'Demo mode: ON (events can be bulk-deleted)\n\n' : ''}`;
+      message += `Note: This is a demo interface. Run with 'npm start' for full functionality.`;
       
-      showAlert(message, 'success');
+      showAlert(message, 'success', true); // Persist in demo mode
     } else {
       // REAL MODE: Make actual API call
       const response = await fetch('/create-events', {
@@ -231,23 +240,23 @@ document.getElementById('create-form')?.addEventListener('submit', async (e) => 
       
       let message = '';
       if (created > 0) {
-        message = `✅ Successfully created ${created} event(s)!`;
-        if (skipped > 0) {
-          message += ` (${skipped} already existed)`;
-        }
-        if (data.demoMode) {
-          message += ' [Demo Mode - Events tagged for easy cleanup]';
+        message = `Successfully created ${created} event(s)!`;
+        if (created === 3) {
+          message += ' Check your calendar and email for the invites:\n\n';
+          data.results.filter(r => r.type === 'created').forEach(r => {
+            message += `• ${r.event.summary}\n`;
+          });
         }
         message += ' Check your calendar and email.';
       } else if (skipped > 0) {
-        message = `ℹ️ All ${skipped} event(s) already exist. No duplicates created.`;
+        message = `All ${skipped} event(s) already exist. No duplicates created.`;
       }
       
       if (errors > 0) {
-        message += ` ⚠️ ${errors} event(s) failed to create.`;
+        message += ` Warning: ${errors} event(s) failed to create.`;
       }
       
-      showAlert(message, errors > 0 ? 'error' : 'success');
+      showAlert(message, errors > 0 ? 'error' : 'success', true); // Persist
     }
     
     // Clear form on success
@@ -259,7 +268,7 @@ document.getElementById('create-form')?.addEventListener('submit', async (e) => 
     
   } catch (error) {
     console.error('Error:', error);
-    showAlert(`❌ Error: ${error.message}`, 'error');
+    showAlert(`Error: ${error.message}`, 'error');
   } finally {
     submitBtn.disabled = false;
     submitBtn.textContent = originalText;
@@ -300,13 +309,13 @@ document.getElementById('delete-form')?.addEventListener('submit', async (e) => 
   
   try {
     if (IS_DEMO_MODE) {
-      // DEMO MODE: Simulate event deletion without actual API calls
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API delay
+      // DEMO MODE: Simulate deleting events without actual API calls
+      await new Promise(resolve => setTimeout(resolve, 1200)); // Simulate API delay
       
-      const message = `✅ [DEMO] Would have deleted 3 events for "${title}" (${attendeeEmail})\n\n` +
-                     `ℹ️ This is a demo interface. Run with 'npm start' for full functionality.`;
+      const message = `[DEMO] Would have deleted 3 events for "${title}" (${attendeeEmail})\n\n` +
+                     `Note: This is a demo interface. Run with 'npm start' for full functionality.`;
       
-      showAlert(message, 'success');
+      showAlert(message, 'success', true); // Persist in demo mode
     } else {
       // REAL MODE: Make actual API call
       const response = await fetch('/delete-events', {
@@ -337,16 +346,16 @@ document.getElementById('delete-form')?.addEventListener('submit', async (e) => 
       
       let message = '';
       if (deleted > 0) {
-        message = `✅ Successfully deleted ${deleted} event(s).`;
-      } else if (notFound > 0) {
-        message = `ℹ️ No matching events found to delete.`;
+        message = `Successfully deleted ${deleted} event(s).`;
+      } else {
+        message = `No matching events found to delete.`;
       }
       
       if (errors > 0) {
-        message += ` ⚠️ ${errors} event(s) failed to delete.`;
+        message += ` Warning: ${errors} event(s) failed to delete.`;
       }
       
-      showAlert(message, errors > 0 ? 'error' : 'success');
+      showAlert(message, errors > 0 ? 'error' : 'success', true); // Persist
     }
     
     // Clear form on success
@@ -380,10 +389,10 @@ document.getElementById('clear-demo-btn')?.addEventListener('click', async () =>
       // DEMO MODE: Simulate clearing events without actual API calls
       await new Promise(resolve => setTimeout(resolve, 1200)); // Simulate API delay
       
-      const message = `✅ [DEMO] Would have cleared all demo mode events from calendar\n\n` +
-                     `ℹ️ This is a demo interface. Run with 'npm start' for full functionality.`;
+      const message = `[DEMO] Would have cleared all demo mode events from calendar\n\n` +
+                     `Note: This is a demo interface. Run with 'npm start' for full functionality.`;
       
-      showAlert(message, 'success');
+      showAlert(message, 'success', true); // Persist in demo mode
     } else {
       // REAL MODE: Make actual API call
       const response = await fetch('/clear-demo-events', {
@@ -408,22 +417,22 @@ document.getElementById('clear-demo-btn')?.addEventListener('click', async () =>
       
       let message = '';
       if (data.deleted > 0) {
-        message = `✅ Successfully deleted ${data.deleted} demo event(s).`;
+        message = `Successfully deleted ${data.deleted} demo event(s).`;
       } else {
-        message = `ℹ️ No demo events found to delete.`;
+        message = `No demo events found to delete.`;
       }
       
       if (data.errors > 0) {
-        message += ` ⚠️ ${data.errors} event(s) failed to delete.`;
+        message += ` Warning: ${data.errors} event(s) failed to delete.`;
         console.error('Error details:', data.errorDetails);
       }
       
-      showAlert(message, data.errors > 0 ? 'error' : 'success');
+      showAlert(message, data.errors > 0 ? 'error' : 'success', true); // Persist
     }
     
   } catch (error) {
     console.error('Error:', error);
-    showAlert(`❌ Error: ${error.message}`, 'error');
+    showAlert(`Error: ${error.message}`, 'error');
   } finally {
     clearBtn.disabled = false;
     clearBtn.textContent = originalText;
@@ -434,7 +443,7 @@ document.getElementById('clear-demo-btn')?.addEventListener('click', async () =>
 document.getElementById('delete-recent-btn').addEventListener('click', async function() {
   const hours = parseInt(document.getElementById('deleteHours').value) || 24;
   
-  if (!confirm(`⚠️ This will DELETE ALL events created by this tool in the last ${hours} hours.\n\nThis includes both manual entries and CSV imports, regardless of demo mode.\n\nAre you sure you want to continue?`)) {
+  if (!confirm(`WARNING: This will DELETE ALL events created by this tool in the last ${hours} hours.\n\nThis includes both manual entries and CSV imports, regardless of demo mode.\n\nAre you sure you want to continue?`)) {
     return;
   }
 
@@ -446,7 +455,7 @@ document.getElementById('delete-recent-btn').addEventListener('click', async fun
   try {
     if (IS_DEMO_MODE) {
       await new Promise(resolve => setTimeout(resolve, 1000));
-      showAlert(`✅ [DEMO] Would have deleted recent automation events from the last ${hours} hours`, 'success');
+      showAlert(`[DEMO] Would have deleted recent automation events from the last ${hours} hours`, 'success', true); // Persist in demo mode
       return;
     }
 
@@ -487,7 +496,7 @@ document.getElementById('delete-recent-btn').addEventListener('click', async fun
       
       let message = '';
       if (results.deleted > 0) {
-        message = `✅ Successfully deleted ${results.deleted} event(s) from the last ${hours} hours.\n\n`;
+        message = `Successfully deleted ${results.deleted} event(s) from the last ${hours} hours.\n\n`;
         if (results.eventsFound.length > 0) {
           message += 'Deleted events:\n';
           results.eventsFound.slice(0, 5).forEach(e => {
@@ -498,20 +507,20 @@ document.getElementById('delete-recent-btn').addEventListener('click', async fun
           }
         }
       } else {
-        message = `ℹ️ No automation events found in the last ${hours} hours.`;
+        message = `No automation events found in the last ${hours} hours.`;
       }
       
       if (results.errors > 0) {
-        message += `\n\n⚠️ ${results.errors} event(s) failed to delete.`;
+        message += `\n\nWarning: ${results.errors} event(s) failed to delete.`;
         console.error('Error details:', results.errorDetails);
       }
       
-      showAlert(message, results.errors > 0 ? 'error' : 'success');
+      showAlert(message, errors > 0 ? 'error' : 'success', true); // Persist
     }
     
   } catch (error) {
     console.error('Error:', error);
-    showAlert(`❌ Error: ${error.message}`, 'error');
+    showAlert(`Error: ${error.message}`, 'error');
   } finally {
     deleteBtn.disabled = false;
     deleteBtn.textContent = originalText;
@@ -521,7 +530,7 @@ document.getElementById('delete-recent-btn').addEventListener('click', async fun
 // Show success message if redirected after authorization
 const urlParams = new URLSearchParams(window.location.search);
 if (urlParams.get('authorized') === 'true') {
-  showAlert('✅ Successfully authorized! You can now create calendar events.', 'success');
+  showAlert('Successfully authorized! You can now create calendar events.', 'success', true); // Persist
   // Clean up URL
   window.history.replaceState({}, document.title, window.location.pathname);
 }

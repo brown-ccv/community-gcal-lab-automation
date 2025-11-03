@@ -9,16 +9,15 @@ async function checkDemoMode() {
     const data = await response.json();
     IS_DEMO_MODE = data.demoMode;
     
-    const banner = document.getElementById('mode-banner');
+    const banner = document.getElementById('demo-mode-banner');
     if (IS_DEMO_MODE) {
-      banner.innerHTML = '<strong>🧪 Demo Version</strong> - No actual calendar events will be created';
-      banner.className = 'mode-banner demo';
-      banner.style.cssText = 'background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px; text-align: center; border-radius: 8px; margin-bottom: 20px;';
+      banner.innerHTML = '<strong>Demo Mode</strong> - Events will be simulated';
+      banner.className = 'demo-mode-banner demo';
     } else {
-      banner.innerHTML = '<strong>✅ Live Mode</strong> - Connected to Google Calendar';
-      banner.className = 'mode-banner live';
-      banner.style.cssText = 'background: linear-gradient(135deg, #34d399 0%, #10b981 100%); color: white; padding: 12px; text-align: center; border-radius: 8px; margin-bottom: 20px;';
+      banner.innerHTML = '<strong>Live Mode</strong> - Connected to Google Calendar';
+      banner.className = 'demo-mode-banner live';
     }
+    banner.style.display = 'block';
   } catch (error) {
     console.error('Failed to check demo mode:', error);
   }
@@ -166,12 +165,12 @@ async function importCSV() {
       
       const { summary, sampleEvents } = currentPreviewData.data;
       
-      let message = `✅ [DEMO] Would have created ${summary.totalEvents} events for ${summary.totalParticipants} participants at ${time}\n\n`;
+      let message = `[DEMO] Would have created ${summary.totalEvents} events for ${summary.totalParticipants} participants at ${time}\n\n`;
       
       // Show sample event details
       message += `Sample events that would be created:\n\n`;
       sampleEvents.slice(0, 3).forEach(event => {
-        message += `📅 ${event.title} - Participant ${event.participantId}\n`;
+        message += `${event.title} - Participant ${event.participantId}\n`;
         message += `   Date: ${event.date} at ${time}\n`;
         message += `   Description: Participant ID: ${event.participantId}\n\n`;
       });
@@ -180,10 +179,10 @@ async function importCSV() {
         message += `... and ${summary.totalEvents - 3} more events\n\n`;
       }
       
-      message += `${demoModeChecked ? '🏷️  Demo mode: ON (events can be bulk-deleted)\n\n' : ''}`;
-      message += `ℹ️ This is a demo interface. Run with 'npm start' for full functionality.`;
+      message += `${demoModeChecked ? 'Demo mode: ON (events can be bulk-deleted)\n\n' : ''}`;
+      message += `Note: This is a demo interface. Run with 'npm start' for full functionality.`;
       
-      showAlert(message, 'success');
+      showAlert(message, 'success', true); // Persist in demo mode
       
       // Reset after showing message
       setTimeout(() => {
@@ -209,12 +208,12 @@ async function importCSV() {
     
     if (result.success) {
       const { results } = result;
-      const message = `✅ Import complete!\n\n` +
+      const message = `Import complete!\n\n` +
                      `• Created: ${results.created}\n` +
                      `• Skipped (already exist): ${results.skipped}\n` +
                      `• Errors: ${results.errors}`;
       
-      showAlert(message, 'success');
+      showAlert(message, 'success', true); // Persist
       
       // Reset after showing message
       setTimeout(() => {
@@ -230,7 +229,7 @@ async function importCSV() {
   }
 }
 
-function showAlert(message, type) {
+function showAlert(message, type, persist = false) {
   const alertBox = document.getElementById('alertBox');
   alertBox.className = `alert alert-${type}`;
   
@@ -253,8 +252,10 @@ function showAlert(message, type) {
   alertBox.appendChild(messageDiv);
   alertBox.style.display = 'block';
   
-  // Auto-hide after 8 seconds
-  setTimeout(hideAlert, 8000);
+  // Auto-hide after 8 seconds (unless persist is true)
+  if (!persist) {
+    setTimeout(hideAlert, 8000);
+  }
 }
 
 function hideAlert() {
