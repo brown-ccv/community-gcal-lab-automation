@@ -185,12 +185,20 @@ document.getElementById('create-form')?.addEventListener('submit', async (e) => 
       
       // Calculate event dates
       const eventDates = calculateEventDates(baseDate);
+      const eventTime = time || '09:00';
       
-      const message = `✅ [DEMO] Would have created 3 events for "${title}" (${attendeeEmail}):\n\n` +
-                     `• ${title} - 1 day check-in on ${eventDates[0].date}\n` +
-                     `• ${title} - 10 day check-in on ${eventDates[1].date}\n` +
-                     `• ${title} - 45 day check-in on ${eventDates[2].date}\n\n` +
-                     `ℹ️ This is a demo interface. Run with 'npm start' for full functionality.`;
+      let message = `✅ [DEMO] Would have created 3 events for "${title}":\n\n`;
+      
+      eventDates.forEach(ed => {
+        message += `📅 ${title} - ${ed.label} check-in\n`;
+        message += `   Date: ${ed.date} at ${eventTime}\n`;
+        message += `   Duration: 30 minutes\n`;
+        message += `   Attendee: ${attendeeEmail}\n`;
+        message += `   Description: Automated check-in event created for ${title}\n\n`;
+      });
+      
+      message += `${demoMode ? '🏷️  Demo mode: ON (events can be bulk-deleted)\n\n' : ''}`;
+      message += `ℹ️ This is a demo interface. Run with 'npm start' for full functionality.`;
       
       showAlert(message, 'success');
     } else {

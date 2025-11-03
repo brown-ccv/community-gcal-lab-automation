@@ -164,9 +164,24 @@ async function importCSV() {
       // Simulate delay
       await new Promise(resolve => setTimeout(resolve, 1500));
       
-      const { summary } = currentPreviewData.data;
-      const message = `✅ [DEMO] Would have created ${summary.totalEvents} events for ${summary.totalParticipants} participants at ${time}\n\n` +
-                     `ℹ️ This is a demo interface. Run with 'npm start' for full functionality.`;
+      const { summary, sampleEvents } = currentPreviewData.data;
+      
+      let message = `✅ [DEMO] Would have created ${summary.totalEvents} events for ${summary.totalParticipants} participants at ${time}\n\n`;
+      
+      // Show sample event details
+      message += `Sample events that would be created:\n\n`;
+      sampleEvents.slice(0, 3).forEach(event => {
+        message += `📅 ${event.title} - Participant ${event.participantId}\n`;
+        message += `   Date: ${event.date} at ${time}\n`;
+        message += `   Description: Participant ID: ${event.participantId}\n\n`;
+      });
+      
+      if (summary.totalEvents > 3) {
+        message += `... and ${summary.totalEvents - 3} more events\n\n`;
+      }
+      
+      message += `${demoModeChecked ? '🏷️  Demo mode: ON (events can be bulk-deleted)\n\n' : ''}`;
+      message += `ℹ️ This is a demo interface. Run with 'npm start' for full functionality.`;
       
       showAlert(message, 'success');
       
