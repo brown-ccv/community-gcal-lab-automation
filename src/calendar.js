@@ -56,16 +56,55 @@ function addDays(dateStr, daysToAdd) {
 }
 
 /**
+ * Shift weekend dates to the previous Friday
+ * @param {string} dateStr - Date in MM/DD/YYYY format
+ * @returns {Object} - { adjustedDate: string, wasShifted: boolean, originalDate: string }
+ */
+function shiftWeekendToFriday(dateStr) {
+  const [month, day, year] = dateStr.split('/').map(s => parseInt(s.trim(), 10));
+  const date = new Date(year, month - 1, day);
+  const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
+  
+  let wasShifted = false;
+  const originalDate = dateStr;
+  
+  // If Saturday (6), shift back 1 day to Friday
+  if (dayOfWeek === 6) {
+    date.setDate(date.getDate() - 1);
+    wasShifted = true;
+  }
+  // If Sunday (0), shift back 2 days to Friday
+  else if (dayOfWeek === 0) {
+    date.setDate(date.getDate() - 2);
+    wasShifted = true;
+  }
+  
+  const newMonth = String(date.getMonth() + 1).padStart(2, '0');
+  const newDay = String(date.getDate()).padStart(2, '0');
+  const newYear = date.getFullYear();
+  const adjustedDate = `${newMonth}/${newDay}/${newYear}`;
+  
+  return { adjustedDate, wasShifted, originalDate };
+}
+
+/**
  * Create calendar events for all follow-up types
  */
 export async function createEvents(auth, { baseDate, title, time, attendeeEmail, calendarId = 'primary', dryRun = false, demoMode = false }) {
   const calendar = google.calendar({ version: 'v3', auth });
   const results = [];
+  
+  // Hardcoded time (9:00 AM - 9:30 AM)
+  const eventTime = '09:00';
+  
+  // Extract participant ID from attendee email (e.g., "701@example.com" -> "701")
+  const participantId = attendeeEmail.split('@')[0];
 
   for (const followUp of FOLLOW_UP_TYPES) {
-    const eventDate = addDays(baseDate, followUp.days);
+    const rawEventDate = addDays(baseDate, followUp.days);
+    const { adjustedDate: eventDate, wasShifted, originalDate } = shiftWeekendToFriday(rawEventDate);
     const eventKey = buildEventKey(baseDate, title, followUp.label, attendeeEmail);
-    const eventTitle = `${title} - ${followUp.label} check-in`;
+    const eventTitle = `${participantId} - ${title} - ${followUp.label} check-in`;
 
     // Check if event already exists (idempotency)
     const existingEvent = await findEventByKey(calendar, calendarId, eventKey);
@@ -75,6 +114,8 @@ export async function createEvents(auth, { baseDate, title, time, attendeeEmail,
         type: 'skipped',
         title: eventTitle,
         date: eventDate,
+        wasShifted,
+        originalDate: wasShifted ? originalDate : null,
         reason: 'Event already exists (idempotent)',
         eventId: existingEvent.id,
       });
@@ -82,10 +123,15 @@ export async function createEvents(auth, { baseDate, title, time, attendeeEmail,
     }
 
     // Build event object
-    const startDateTime = buildDateTime(eventDate, time);
+    const startDateTime = buildDateTime(eventDate, eventTime);
     const startDate = new Date(startDateTime);
     const endDate = new Date(startDate.getTime() + DEFAULT_DURATION_MINUTES * 60000);
     const endDateTime = endDate.toISOString().slice(0, 19);
+    
+    let description = `Automated check-in event created for ${title}.\nBase date: ${baseDate}\nFollow-up type: ${followUp.label}\nParticipant: ${participantId}`;
+    if (wasShifted) {
+      description += `\n\nNote: Original date ${originalDate} fell on a weekend and was shifted to ${eventDate} (Friday).`;
+    }
 
     const event = {
       summary: eventTitle,
@@ -98,7 +144,7 @@ export async function createEvents(auth, { baseDate, title, time, attendeeEmail,
         timeZone: TIMEZONE,
       },
       attendees: [{ email: attendeeEmail }],
-      description: `Automated check-in event created for ${title}.\nBase date: ${baseDate}\nFollow-up type: ${followUp.label}`,
+      description,
       reminders: {
         useDefault: false,
         overrides: [], // No reminders per requirements
@@ -120,6 +166,8 @@ export async function createEvents(auth, { baseDate, title, time, attendeeEmail,
         type: 'dry-run',
         title: eventTitle,
         date: eventDate,
+        wasShifted,
+        originalDate: wasShifted ? originalDate : null,
         event: event,
       });
     } else {
@@ -134,6 +182,8 @@ export async function createEvents(auth, { baseDate, title, time, attendeeEmail,
           type: 'created',
           title: eventTitle,
           date: eventDate,
+          wasShifted,
+          originalDate: wasShifted ? originalDate : null,
           eventId: response.data.id,
           htmlLink: response.data.htmlLink,
         });
@@ -142,6 +192,8 @@ export async function createEvents(auth, { baseDate, title, time, attendeeEmail,
           type: 'error',
           title: eventTitle,
           date: eventDate,
+          wasShifted,
+          originalDate: wasShifted ? originalDate : null,
           error: error.message,
         });
       }
@@ -374,9 +426,13 @@ export async function createEventsFromCSV(auth, events, { time = '09:00', calend
     errors: 0,
     details: [],
   };
+  
+  // Hardcoded time (9:00 AM - 9:30 AM)
+  const eventTime = '09:00';
 
   for (const event of events) {
-    const eventKey = buildCSVEventKey(event.participantId, event.date, event.column);
+    const { adjustedDate: eventDate, wasShifted, originalDate } = shiftWeekendToFriday(event.date);
+    const eventKey = buildCSVEventKey(event.participantId, eventDate, event.column);
     
     try {
       // Check if event already exists (idempotency)
@@ -388,7 +444,9 @@ export async function createEventsFromCSV(auth, events, { time = '09:00', calend
           type: 'skipped',
           participantId: event.participantId,
           title: event.title,
-          date: event.date,
+          date: eventDate,
+          wasShifted,
+          originalDate: wasShifted ? originalDate : null,
           reason: 'Event already exists',
         });
         continue;
@@ -399,21 +457,28 @@ export async function createEventsFromCSV(auth, events, { time = '09:00', calend
           type: 'dry-run',
           participantId: event.participantId,
           title: event.title,
-          date: event.date,
-          time,
+          date: eventDate,
+          wasShifted,
+          originalDate: wasShifted ? originalDate : null,
+          time: eventTime,
         });
         continue;
       }
 
       // Build event object
-      const startDateTime = buildDateTime(event.date, time);
+      const startDateTime = buildDateTime(eventDate, eventTime);
       const startDate = new Date(startDateTime);
       const endDate = new Date(startDate.getTime() + DEFAULT_DURATION_MINUTES * 60000);
       const endDateTime = endDate.toISOString().slice(0, 19);
+      
+      let description = `Participant ID: ${event.participantId}\nColumn: ${event.column}`;
+      if (wasShifted) {
+        description += `\n\nNote: Original date ${originalDate} fell on a weekend and was shifted to ${eventDate} (Friday).`;
+      }
 
       const calendarEvent = {
-        summary: `${event.title} - Participant ${event.participantId}`,
-        description: `Participant ID: ${event.participantId}\nColumn: ${event.column}`,
+        summary: `${event.participantId} - ${event.title}`,
+        description,
         start: {
           dateTime: startDateTime,
           timeZone: TIMEZONE,
@@ -443,8 +508,10 @@ export async function createEventsFromCSV(auth, events, { time = '09:00', calend
       results.details.push({
         type: 'created',
         participantId: event.participantId,
-        title: event.title,
-        date: event.date,
+        title: `${event.participantId} - ${event.title}`,
+        date: eventDate,
+        wasShifted,
+        originalDate: wasShifted ? originalDate : null,
         eventId: response.data.id,
       });
 
@@ -454,7 +521,9 @@ export async function createEventsFromCSV(auth, events, { time = '09:00', calend
         type: 'error',
         participantId: event.participantId,
         title: event.title,
-        date: event.date,
+        date: eventDate,
+        wasShifted,
+        originalDate: wasShifted ? originalDate : null,
         error: error.message,
       });
     }

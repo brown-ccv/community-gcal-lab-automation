@@ -3,6 +3,14 @@
 // Global demo mode flag - will be set on page load
 let IS_DEMO_MODE = true;
 
+// Helper function to check if a date falls on weekend
+function isWeekend(dateStr) {
+  const [month, day, year] = dateStr.split('/').map(s => parseInt(s.trim(), 10));
+  const date = new Date(year, month - 1, day);
+  const dayOfWeek = date.getDay();
+  return dayOfWeek === 0 || dayOfWeek === 6; // Sunday or Saturday
+}
+
 // Check demo mode status on page load
 (async function checkDemoMode() {
   try {
@@ -163,18 +171,12 @@ document.getElementById('create-form')?.addEventListener('submit', async (e) => 
   // Get form values
   const baseDate = document.getElementById('baseDate').value.trim();
   const title = document.getElementById('title').value.trim();
-  const time = document.getElementById('time').value.trim();
   const attendeeEmail = document.getElementById('attendeeEmail').value.trim();
   const demoMode = document.getElementById('demoMode').checked;
   
   // Validation
   if (!validateDate(baseDate)) {
     showAlert('Invalid date format. Please use MM/DD/YYYY (e.g., 11/10/2025)', 'error');
-    return;
-  }
-  
-  if (!validateTime(time)) {
-    showAlert('Invalid time format. Please use HH:MM in 24-hour format (e.g., 09:00, 14:30)', 'error');
     return;
   }
   
@@ -194,13 +196,14 @@ document.getElementById('create-form')?.addEventListener('submit', async (e) => 
       
       // Calculate event dates
       const eventDates = calculateEventDates(baseDate);
-      const eventTime = time || '09:00';
+      const participantId = attendeeEmail.split('@')[0];
       
       let message = `[DEMO] Would have created 3 events for "${title}":\n\n`;
       
       eventDates.forEach(ed => {
-        message += `${title} - ${ed.label} check-in\n`;
-        message += `   Date: ${ed.date} at ${eventTime}\n`;
+        const shiftInfo = isWeekend(ed.date) ? ' (shifted from weekend to Friday)' : '';
+        message += `${participantId} - ${title} - ${ed.label} check-in\n`;
+        message += `   Date: ${ed.date}${shiftInfo} at 9:00 AM\n`;
         message += `   Duration: 30 minutes\n`;
         message += `   Attendee: ${attendeeEmail}\n`;
         message += `   Description: Automated check-in event created for ${title}\n\n`;
@@ -217,7 +220,7 @@ document.getElementById('create-form')?.addEventListener('submit', async (e) => 
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ baseDate, title, time: time || '09:00', attendeeEmail, demoMode }),
+        body: JSON.stringify({ baseDate, title, attendeeEmail, demoMode }),
         redirect: 'manual',
       });
       
@@ -237,6 +240,7 @@ document.getElementById('create-form')?.addEventListener('submit', async (e) => 
       const created = data.results.filter(r => r.type === 'created').length;
       const skipped = data.results.filter(r => r.type === 'skipped').length;
       const errors = data.results.filter(r => r.type === 'error').length;
+      const shifted = data.results.filter(r => r.wasShifted).length;
       
       let message = '';
       if (created > 0) {
@@ -244,10 +248,16 @@ document.getElementById('create-form')?.addEventListener('submit', async (e) => 
         if (created === 3) {
           message += ' Check your calendar and email for the invites:\n\n';
           data.results.filter(r => r.type === 'created').forEach(r => {
-            message += `• ${r.event.summary}\n`;
+            const shiftNote = r.wasShifted ? ` (shifted from ${r.originalDate})` : '';
+            message += `• ${r.title}\n  Date: ${r.date}${shiftNote}\n`;
           });
         }
-        message += ' Check your calendar and email.';
+        
+        if (shifted > 0) {
+          message += `\nNote: ${shifted} event(s) were shifted from weekends to Friday.`;
+        }
+        
+        message += '\n\nCheck your calendar and email.';
       } else if (skipped > 0) {
         message = `All ${skipped} event(s) already exist. No duplicates created.`;
       }

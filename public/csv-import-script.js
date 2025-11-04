@@ -145,7 +145,6 @@ async function importCSV() {
     return;
   }
   
-  const time = document.getElementById('eventTime').value;
   const demoModeChecked = document.getElementById('demoMode').checked;
   const importBtn = document.getElementById('importBtn');
   
@@ -155,7 +154,6 @@ async function importCSV() {
   
   const formData = new FormData();
   formData.append('csvFile', currentPreviewData.file);
-  formData.append('time', time);
   formData.append('demoMode', demoModeChecked);
   
   try {
@@ -165,14 +163,14 @@ async function importCSV() {
       
       const { summary, sampleEvents } = currentPreviewData.data;
       
-      let message = `[DEMO] Would have created ${summary.totalEvents} events for ${summary.totalParticipants} participants at ${time}\n\n`;
+      let message = `[DEMO] Would have created ${summary.totalEvents} events for ${summary.totalParticipants} participants at 9:00 AM\n\n`;
       
       // Show sample event details
       message += `Sample events that would be created:\n\n`;
       sampleEvents.slice(0, 3).forEach(event => {
-        message += `${event.title} - Participant ${event.participantId}\n`;
-        message += `   Date: ${event.date} at ${time}\n`;
-        message += `   Description: Participant ID: ${event.participantId}\n\n`;
+        message += `${event.participantId} - ${event.title}\n`;
+        message += `   Date: ${event.date} at 9:00 AM\n`;
+        message += `   (Weekend dates will be shifted to Friday)\n\n`;
       });
       
       if (summary.totalEvents > 3) {
@@ -208,10 +206,23 @@ async function importCSV() {
     
     if (result.success) {
       const { results } = result;
-      const message = `Import complete!\n\n` +
-                     `• Created: ${results.created}\n` +
-                     `• Skipped (already exist): ${results.skipped}\n` +
-                     `• Errors: ${results.errors}`;
+      
+      // Generate report
+      const reportText = generateImportReport(results);
+      
+      // Show success message with summary
+      const shifted = results.details.filter(d => d.wasShifted).length;
+      let message = `Import complete!\n\n` +
+                   `• Created: ${results.created}\n` +
+                   `• Skipped (already exist): ${results.skipped}\n` +
+                   `• Errors: ${results.errors}`;
+      
+      if (shifted > 0) {
+        message += `\n• Weekend shifts: ${shifted}`;
+      }
+      
+      // Display detailed report in UI
+      displayImportReport(reportText, results);
       
       showAlert(message, 'success', true); // Persist
       
@@ -261,4 +272,127 @@ function showAlert(message, type, persist = false) {
 function hideAlert() {
   const alertBox = document.getElementById('alertBox');
   alertBox.style.display = 'none';
+}
+
+// Generate import report text
+function generateImportReport(results) {
+  const timestamp = new Date().toLocaleString();
+  let report = `CSV Import Report\n`;
+  report += `Generated: ${timestamp}\n`;
+  report += `${'='.repeat(60)}\n\n`;
+  
+  report += `SUMMARY:\n`;
+  report += `Total Created: ${results.created}\n`;
+  report += `Total Skipped: ${results.skipped}\n`;
+  report += `Total Errors: ${results.errors}\n`;
+  report += `Weekend Shifts: ${results.details.filter(d => d.wasShifted).length}\n\n`;
+  
+  if (results.created > 0) {
+    report += `CREATED EVENTS:\n`;
+    report += `${'-'.repeat(60)}\n`;
+    results.details
+      .filter(d => d.type === 'created')
+      .forEach(event => {
+        report += `Event: ${event.title}\n`;
+        report += `Date: ${event.date}`;
+        if (event.wasShifted) {
+          report += ` (shifted from ${event.originalDate})`;
+        }
+        report += `\n\n`;
+      });
+  }
+  
+  if (results.skipped > 0) {
+    report += `\nSKIPPED EVENTS (Already Exist):\n`;
+    report += `${'-'.repeat(60)}\n`;
+    results.details
+      .filter(d => d.type === 'skipped')
+      .forEach(event => {
+        report += `Event: ${event.participantId} - ${event.title}\n`;
+        report += `Date: ${event.date}\n\n`;
+      });
+  }
+  
+  if (results.errors > 0) {
+    report += `\nERRORS:\n`;
+    report += `${'-'.repeat(60)}\n`;
+    results.details
+      .filter(d => d.type === 'error')
+      .forEach(event => {
+        report += `Event: ${event.participantId} - ${event.title}\n`;
+        report += `Error: ${event.error}\n\n`;
+      });
+  }
+  
+  return report;
+}
+
+// Display report in UI with download button
+function displayImportReport(reportText, results) {
+  const previewDiv = document.getElementById('previewSection');
+  if (!previewDiv) return;
+  
+  // Create report container
+  const reportContainer = document.createElement('div');
+  reportContainer.style.cssText = 'margin-top: 20px; padding: 20px; background: #f5f5f5; border-radius: 8px; border: 2px solid #4caf50;';
+  
+  const reportTitle = document.createElement('h3');
+  reportTitle.textContent = 'Import Report';
+  reportTitle.style.marginTop = '0';
+  reportContainer.appendChild(reportTitle);
+  
+  // Add summary
+  const summary = document.createElement('div');
+  summary.style.cssText = 'margin: 15px 0; padding: 15px; background: white; border-radius: 4px;';
+  const shifted = results.details.filter(d => d.wasShifted).length;
+  summary.innerHTML = `
+    <strong>Summary:</strong><br>
+    • Created: ${results.created}<br>
+    • Skipped: ${results.skipped}<br>
+    • Errors: ${results.errors}<br>
+    ${shifted > 0 ? `• Weekend Shifts: ${shifted}<br>` : ''}
+  `;
+  reportContainer.appendChild(summary);
+  
+  // Add event list
+  if (results.created > 0) {
+    const eventList = document.createElement('div');
+    eventList.style.cssText = 'margin: 15px 0; padding: 15px; background: white; border-radius: 4px; max-height: 300px; overflow-y: auto;';
+    
+    let eventHTML = '<strong>Created Events:</strong><br><br>';
+    results.details
+      .filter(d => d.type === 'created')
+      .forEach(event => {
+        const shiftNote = event.wasShifted ? ` <span style="color: #ff9800;">(shifted from ${event.originalDate})</span>` : '';
+        eventHTML += `• ${event.title}<br>`;
+        eventHTML += `  Date: ${event.date}${shiftNote}<br><br>`;
+      });
+    
+    eventList.innerHTML = eventHTML;
+    reportContainer.appendChild(eventList);
+  }
+  
+  // Add download button
+  const downloadBtn = document.createElement('button');
+  downloadBtn.textContent = 'Download Report (TXT)';
+  downloadBtn.className = 'btn btn-secondary';
+  downloadBtn.style.marginTop = '15px';
+  downloadBtn.onclick = () => downloadReport(reportText);
+  reportContainer.appendChild(downloadBtn);
+  
+  // Insert after preview section
+  previewDiv.appendChild(reportContainer);
+}
+
+// Download report as text file
+function downloadReport(reportText) {
+  const blob = new Blob([reportText], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `import-report-${new Date().toISOString().slice(0, 10)}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }

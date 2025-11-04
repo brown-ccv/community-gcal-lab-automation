@@ -334,12 +334,11 @@ app.post('/api/csv/import', upload.single('csvFile'), async (req, res) => {
       return res.status(401).json({ error: 'Not authorized. Please authorize first.' });
     }
 
-    const time = req.body.time || '09:00';
     const demoMode = req.body.demoMode === 'true';
     const events = parseCSVFromBuffer(req.file.buffer);
     const auth = getAuthorizedClient();
 
-    const results = await createEventsFromCSV(auth, events, { time, demoMode });
+    const results = await createEventsFromCSV(auth, events, { demoMode });
 
     res.json({
       success: true,
