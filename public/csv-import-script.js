@@ -10,6 +10,34 @@ function isWeekendDate(dateStr) {
   return dayOfWeek === 0 || dayOfWeek === 6; // Sunday or Saturday
 }
 
+// Shift weekend dates to the previous Friday
+function shiftWeekendToFriday(dateStr) {
+  const [month, day, year] = dateStr.split('/').map(s => parseInt(s.trim(), 10));
+  const date = new Date(year, month - 1, day);
+  const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
+  
+  let wasShifted = false;
+  const originalDate = dateStr;
+  
+  // If Saturday (6), shift back 1 day to Friday
+  if (dayOfWeek === 6) {
+    date.setDate(date.getDate() - 1);
+    wasShifted = true;
+  }
+  // If Sunday (0), shift back 2 days to Friday
+  else if (dayOfWeek === 0) {
+    date.setDate(date.getDate() - 2);
+    wasShifted = true;
+  }
+  
+  const newMonth = String(date.getMonth() + 1).padStart(2, '0');
+  const newDay = String(date.getDate()).padStart(2, '0');
+  const newYear = date.getFullYear();
+  const adjustedDate = `${newMonth}/${newDay}/${newYear}`;
+  
+  return { adjustedDate, wasShifted, originalDate };
+}
+
 // Check demo mode on page load
 async function checkDemoMode() {
   try {
@@ -171,29 +199,37 @@ async function importCSV() {
       
       const { summary, sampleEvents } = currentPreviewData.data;
       
-      // Generate demo report data (simulate all events)
+      // Generate demo report data (simulate all events with proper date shifting)
       const demoResults = {
         created: summary.totalEvents,
         skipped: 0,
         errors: 0,
-        details: currentPreviewData.data.events.map(event => ({
-          type: 'created',
-          participantId: event.participantId,
-          title: `${event.participantId} - ${event.title}`,
-          date: event.date,
-          wasShifted: isWeekendDate(event.date),
-          originalDate: event.date
-        }))
+        details: currentPreviewData.data.events.map(event => {
+          const shifted = shiftWeekendToFriday(event.date);
+          return {
+            type: 'created',
+            participantId: event.participantId,
+            title: `${event.participantId} - ${event.title}`,
+            date: shifted.adjustedDate,
+            wasShifted: shifted.wasShifted,
+            originalDate: shifted.originalDate
+          };
+        })
       };
       
       let message = `[DEMO] Would have created ${summary.totalEvents} events for ${summary.totalParticipants} participants at 9:00 AM\n\n`;
       
-      // Show sample event details
+      // Show sample event details (with shifted dates)
       message += `Sample events that would be created:\n\n`;
-      sampleEvents.slice(0, 3).forEach(event => {
-        message += `${event.participantId} - ${event.title}\n`;
-        message += `   Date: ${event.date} at 9:00 AM\n`;
-        message += `   (Weekend dates will be shifted to Friday)\n\n`;
+      const shiftedSamples = sampleEvents.slice(0, 3).map(event => {
+        const shifted = shiftWeekendToFriday(event.date);
+        return { ...event, shifted };
+      });
+      
+      shiftedSamples.forEach(({ participantId, title, shifted }) => {
+        const shiftNote = shifted.wasShifted ? ` (shifted from ${shifted.originalDate})` : '';
+        message += `${participantId} - ${title}\n`;
+        message += `   Date: ${shifted.adjustedDate}${shiftNote} at 9:00 AM\n\n`;
       });
       
       if (summary.totalEvents > 3) {

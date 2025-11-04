@@ -11,6 +11,34 @@ function isWeekend(dateStr) {
   return dayOfWeek === 0 || dayOfWeek === 6; // Sunday or Saturday
 }
 
+// Shift weekend dates to the previous Friday
+function shiftWeekendToFriday(dateStr) {
+  const [month, day, year] = dateStr.split('/').map(s => parseInt(s.trim(), 10));
+  const date = new Date(year, month - 1, day);
+  const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
+  
+  let wasShifted = false;
+  const originalDate = dateStr;
+  
+  // If Saturday (6), shift back 1 day to Friday
+  if (dayOfWeek === 6) {
+    date.setDate(date.getDate() - 1);
+    wasShifted = true;
+  }
+  // If Sunday (0), shift back 2 days to Friday
+  else if (dayOfWeek === 0) {
+    date.setDate(date.getDate() - 2);
+    wasShifted = true;
+  }
+  
+  const newMonth = String(date.getMonth() + 1).padStart(2, '0');
+  const newDay = String(date.getDate()).padStart(2, '0');
+  const newYear = date.getFullYear();
+  const adjustedDate = `${newMonth}/${newDay}/${newYear}`;
+  
+  return { adjustedDate, wasShifted, originalDate };
+}
+
 // Check demo mode status on page load
 (async function checkDemoMode() {
   try {
@@ -198,27 +226,30 @@ document.getElementById('create-form')?.addEventListener('submit', async (e) => 
       const eventDates = calculateEventDates(baseDate);
       const participantId = attendeeEmail.split('@')[0];
       
-      // Generate report for demo mode
+      // Generate report for demo mode with shifted dates
       const reportData = {
         created: 3,
         skipped: 0,
         errors: 0,
-        details: eventDates.map(ed => ({
-          type: 'created',
-          title: `${participantId} - ${title} - ${ed.label} check-in`,
-          date: ed.date,
-          wasShifted: isWeekend(ed.date),
-          originalDate: ed.date,
-          participantId
-        }))
+        details: eventDates.map(ed => {
+          const shifted = shiftWeekendToFriday(ed.date);
+          return {
+            type: 'created',
+            title: `${participantId} - ${title} - ${ed.label} check-in`,
+            date: shifted.adjustedDate,
+            wasShifted: shifted.wasShifted,
+            originalDate: shifted.originalDate,
+            participantId
+          };
+        })
       };
       
       let message = `[DEMO] Would have created 3 events for "${title}":\n\n`;
       
-      eventDates.forEach(ed => {
-        const shiftInfo = isWeekend(ed.date) ? ' (shifted from weekend to Friday)' : '';
-        message += `${participantId} - ${title} - ${ed.label} check-in\n`;
-        message += `   Date: ${ed.date}${shiftInfo} at 9:00 AM\n`;
+      reportData.details.forEach(detail => {
+        const shiftInfo = detail.wasShifted ? ` (shifted from ${detail.originalDate})` : '';
+        message += `${detail.title}\n`;
+        message += `   Date: ${detail.date}${shiftInfo} at 9:00 AM\n`;
         message += `   Duration: 30 minutes\n`;
         message += `   Attendee: ${attendeeEmail}\n`;
         message += `   Description: Automated check-in event created for ${title}\n\n`;
