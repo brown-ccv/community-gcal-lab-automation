@@ -303,6 +303,7 @@ app.post('/api/csv/preview', upload.single('csvFile'), (req, res) => {
       success: true,
       summary,
       sampleEvents: events.slice(0, 10), // Send first 10 events as preview
+      events, // Send all events for report generation
     });
   } catch (error) {
     console.error('Error previewing CSV:', error);

@@ -198,6 +198,21 @@ document.getElementById('create-form')?.addEventListener('submit', async (e) => 
       const eventDates = calculateEventDates(baseDate);
       const participantId = attendeeEmail.split('@')[0];
       
+      // Generate report for demo mode
+      const reportData = {
+        created: 3,
+        skipped: 0,
+        errors: 0,
+        details: eventDates.map(ed => ({
+          type: 'created',
+          title: `${participantId} - ${title} - ${ed.label} check-in`,
+          date: ed.date,
+          wasShifted: isWeekend(ed.date),
+          originalDate: ed.date,
+          participantId
+        }))
+      };
+      
       let message = `[DEMO] Would have created 3 events for "${title}":\n\n`;
       
       eventDates.forEach(ed => {
@@ -211,6 +226,9 @@ document.getElementById('create-form')?.addEventListener('submit', async (e) => 
       
       message += `${demoMode ? 'Demo mode: ON (events can be bulk-deleted)\n\n' : ''}`;
       message += `Note: This is a demo interface. Run with 'npm start' for full functionality.`;
+      
+      // Display report with download button
+      displayManualEntryReport(reportData, title);
       
       showAlert(message, 'success', true); // Persist in demo mode
     } else {
@@ -543,4 +561,105 @@ if (urlParams.get('authorized') === 'true') {
   showAlert('Successfully authorized! You can now create calendar events.', 'success', true); // Persist
   // Clean up URL
   window.history.replaceState({}, document.title, window.location.pathname);
+}
+
+// Generate report for manual entry
+function generateManualEntryReport(reportData, projectTitle) {
+  const timestamp = new Date().toLocaleString();
+  let report = `Manual Entry Report\n`;
+  report += `Project: ${projectTitle}\n`;
+  report += `Generated: ${timestamp}\n`;
+  report += `${'='.repeat(60)}\n\n`;
+  
+  report += `SUMMARY:\n`;
+  report += `Total Events: ${reportData.created}\n`;
+  report += `Weekend Shifts: ${reportData.details.filter(d => d.wasShifted).length}\n\n`;
+  
+  report += `EVENTS TO BE CREATED:\n`;
+  report += `${'-'.repeat(60)}\n`;
+  reportData.details.forEach(event => {
+    report += `Event: ${event.title}\n`;
+    report += `Date: ${event.date}`;
+    if (event.wasShifted) {
+      report += ` (shifted from weekend to Friday)`;
+    }
+    report += `\nTime: 9:00 AM - 9:30 AM\n\n`;
+  });
+  
+  return report;
+}
+
+// Display manual entry report with download button
+function displayManualEntryReport(reportData, projectTitle) {
+  const formCard = document.querySelector('.card');
+  if (!formCard) return;
+  
+  // Remove any existing report
+  const existingReport = document.getElementById('manualEntryReport');
+  if (existingReport) {
+    existingReport.remove();
+  }
+  
+  // Create report container
+  const reportContainer = document.createElement('div');
+  reportContainer.id = 'manualEntryReport';
+  reportContainer.style.cssText = 'margin-top: 20px; padding: 20px; background: #f5f5f5; border-radius: 8px; border: 2px solid #4caf50;';
+  
+  const reportTitle = document.createElement('h3');
+  reportTitle.textContent = 'Event Creation Report';
+  reportTitle.style.marginTop = '0';
+  reportContainer.appendChild(reportTitle);
+  
+  // Add summary
+  const summary = document.createElement('div');
+  summary.style.cssText = 'margin: 15px 0; padding: 15px; background: white; border-radius: 4px;';
+  const shifted = reportData.details.filter(d => d.wasShifted).length;
+  summary.innerHTML = `
+    <strong>Summary:</strong><br>
+    • Total Events: ${reportData.created}<br>
+    ${shifted > 0 ? `• Weekend Shifts: ${shifted}<br>` : ''}
+  `;
+  reportContainer.appendChild(summary);
+  
+  // Add event list
+  const eventList = document.createElement('div');
+  eventList.style.cssText = 'margin: 15px 0; padding: 15px; background: white; border-radius: 4px;';
+  
+  let eventHTML = '<strong>Events:</strong><br><br>';
+  reportData.details.forEach(event => {
+    const shiftNote = event.wasShifted ? ` <span style="color: #ff9800;">(shifted from weekend)</span>` : '';
+    eventHTML += `• ${event.title}<br>`;
+    eventHTML += `  Date: ${event.date}${shiftNote}<br>`;
+    eventHTML += `  Time: 9:00 AM - 9:30 AM<br><br>`;
+  });
+  
+  eventList.innerHTML = eventHTML;
+  reportContainer.appendChild(eventList);
+  
+  // Generate report text
+  const reportText = generateManualEntryReport(reportData, projectTitle);
+  
+  // Add download button
+  const downloadBtn = document.createElement('button');
+  downloadBtn.textContent = 'Download Report (TXT)';
+  downloadBtn.className = 'btn btn-secondary';
+  downloadBtn.style.marginTop = '15px';
+  downloadBtn.onclick = () => downloadReportFile(reportText, 'manual-entry');
+  reportContainer.appendChild(downloadBtn);
+  
+  // Insert after the form card
+  formCard.parentNode.insertBefore(reportContainer, formCard.nextSibling);
+}
+
+// Download report as text file
+function downloadReportFile(reportText, prefix) {
+  const blob = new Blob([reportText], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${prefix}-report-${new Date().toISOString().slice(0, 10)}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }

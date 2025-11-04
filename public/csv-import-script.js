@@ -2,6 +2,14 @@
 let IS_DEMO_MODE = false;
 let currentPreviewData = null;
 
+// Helper function to check if a date falls on weekend
+function isWeekendDate(dateStr) {
+  const [month, day, year] = dateStr.split('/').map(s => parseInt(s.trim(), 10));
+  const date = new Date(year, month - 1, day);
+  const dayOfWeek = date.getDay();
+  return dayOfWeek === 0 || dayOfWeek === 6; // Sunday or Saturday
+}
+
 // Check demo mode on page load
 async function checkDemoMode() {
   try {
@@ -163,6 +171,21 @@ async function importCSV() {
       
       const { summary, sampleEvents } = currentPreviewData.data;
       
+      // Generate demo report data (simulate all events)
+      const demoResults = {
+        created: summary.totalEvents,
+        skipped: 0,
+        errors: 0,
+        details: currentPreviewData.data.events.map(event => ({
+          type: 'created',
+          participantId: event.participantId,
+          title: `${event.participantId} - ${event.title}`,
+          date: event.date,
+          wasShifted: isWeekendDate(event.date),
+          originalDate: event.date
+        }))
+      };
+      
       let message = `[DEMO] Would have created ${summary.totalEvents} events for ${summary.totalParticipants} participants at 9:00 AM\n\n`;
       
       // Show sample event details
@@ -180,11 +203,14 @@ async function importCSV() {
       message += `${demoModeChecked ? 'Demo mode: ON (events can be bulk-deleted)\n\n' : ''}`;
       message += `Note: This is a demo interface. Run with 'npm start' for full functionality.`;
       
+      // Generate and display report
+      const reportText = generateImportReport(demoResults);
+      displayImportReport(reportText, demoResults);
+      
       showAlert(message, 'success', true); // Persist in demo mode
       
       // Reset after showing message
       setTimeout(() => {
-        resetUpload();
         importBtn.disabled = false;
         importBtn.textContent = 'Create Events';
       }, 3000);
