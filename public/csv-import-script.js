@@ -45,15 +45,29 @@ async function checkDemoMode() {
     const data = await response.json();
     IS_DEMO_MODE = data.demoMode;
     
-    const banner = document.getElementById('demo-mode-banner');
-    if (IS_DEMO_MODE) {
-      banner.innerHTML = '<strong>Demo Mode</strong> - Events will be simulated';
-      banner.className = 'demo-mode-banner demo';
-    } else {
-      banner.innerHTML = '<strong>Live Mode</strong> - Connected to Google Calendar';
-      banner.className = 'demo-mode-banner live';
+    const banner = document.getElementById('mode-banner');
+    if (banner) {
+      if (IS_DEMO_MODE) {
+        banner.style.backgroundColor = '#e3f2fd';
+        banner.style.borderLeft = '4px solid #2196f3';
+        banner.innerHTML = `
+          <strong>🧪 Demo Mode</strong>
+          <p style="margin: 0.5rem 0 0 0;">
+            Events will be simulated. No actual calendar modifications will be made.
+          </p>
+        `;
+      } else {
+        banner.style.backgroundColor = '#e8f5e9';
+        banner.style.borderLeft = '4px solid #4caf50';
+        banner.innerHTML = `
+          <strong>✅ Live Mode</strong>
+          <p style="margin: 0.5rem 0 0 0;">
+            Connected to Google Calendar API. Events created here will be <strong>real calendar invites</strong> sent to participants.
+          </p>
+        `;
+      }
+      banner.style.display = 'block';
     }
-    banner.style.display = 'block';
   } catch (error) {
     console.error('Failed to check demo mode:', error);
   }

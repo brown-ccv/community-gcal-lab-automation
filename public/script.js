@@ -53,23 +53,12 @@ function shiftWeekendToFriday(dateStr) {
       if (IS_DEMO_MODE) {
         banner.style.backgroundColor = '#e3f2fd';
         banner.style.borderLeft = '4px solid #2196f3';
-        const modeDisplay = document.getElementById('demo-mode-display');
-    if (modeDisplay) {
-      if (IS_DEMO_MODE) {
-        modeDisplay.innerHTML = `
-          <strong>Demo Version</strong>
-          <p style="margin: 5px 0 0 0; font-size: 14px;">Events will be simulated. No actual calendar modifications.</p>
+        banner.innerHTML = `
+          <strong>🧪 Demo Mode</strong>
+          <p style="margin: 0.5rem 0 0 0;">
+            Events will be simulated. No actual calendar modifications will be made.
+          </p>
         `;
-        modeDisplay.className = 'demo-mode-banner demo';
-      } else {
-        modeDisplay.innerHTML = `
-          <strong>Live Mode</strong>
-          <p style="margin: 5px 0 0 0; font-size: 14px;">Connected to Google Calendar API</p>
-        `;
-        modeDisplay.className = 'demo-mode-banner live';
-      }
-      modeDisplay.style.display = 'block';
-    }
       } else {
         banner.style.backgroundColor = '#e8f5e9';
         banner.style.borderLeft = '4px solid #4caf50';
