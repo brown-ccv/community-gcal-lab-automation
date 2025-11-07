@@ -2,7 +2,7 @@
 
 Automated creation of follow-up check-in calendar events for lab participants.
 
-## 🌐 Live Demo
+## Live Demo
 
 **[View Demo Interface](https://gcal-lab-automation.onrender.com/)** - Showcases the UI and functionality (no actual events created)
 
@@ -10,13 +10,13 @@ Automated creation of follow-up check-in calendar events for lab participants.
 
 ## Features
 
-- 📅 **Batch event creation**: Creates multiple follow-up check-ins (1 day, 10 day, 45 day) from a single base date
-- � **CSV bulk import**: Upload FileMaker exports to create events for multiple participants at once
-- �🔐 **OAuth2 authentication**: Secure Google Calendar API access
-- 🔄 **Idempotent**: Won't create duplicate events if run multiple times
-- 🗑️ **Easy cleanup**: Delete test events with a simple command
-- ⏰ **Timezone aware**: Uses America/New_York timezone
-- ✉️ **Automatic invites**: Sends calendar invites to specified attendee (or create events without invites)
+- **Batch event creation**: Creates multiple follow-up check-ins (1 day, 10 day, 45 day) from a single base date
+- **CSV bulk import**: Upload FileMaker exports to create events for multiple participants at once
+- **OAuth2 authentication**: Secure Google Calendar API access
+- **Idempotent**: Won't create duplicate events if run multiple times
+- **Easy cleanup**: Delete test events with a simple command
+- **Timezone aware**: Uses America/New_York timezone
+- **Automatic invites**: Sends calendar invites to specified attendee (or create events without invites)
 
 ## Setup
 
@@ -136,7 +136,7 @@ You'll be prompted to:
 
 **Web Interface:**
 1. Navigate to http://localhost:3000
-2. Click "📊 Bulk CSV Import →"
+2. Click "Bulk CSV Import"
 3. Upload or drag-drop your CSV file
 4. Review the summary and sample events
 5. Click "Create Events"
