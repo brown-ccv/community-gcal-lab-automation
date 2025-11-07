@@ -1,5 +1,6 @@
 # Credentials files
 credentials.json
+auth-credentials.json
 token.json
 
 # Environment variables

@@ -6,17 +6,21 @@
   "scripts": {
     "start": "node start-live.js",
     "start:demo": "node start-demo.js",
+    "dev": "BYPASS_AUTH=true node src/server.js",
     "cli": "node src/cli.js",
-    "csv-import": "node src/csvImport.js",
-    "dev": "node --watch src/server.js"
+    "csv-import": "node src/csvImport.js"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
     "csv-parse": "^6.1.0",
+    "dotenv": "^17.2.3",
     "express": "^4.18.2",
+    "express-session": "^1.18.2",
     "googleapis": "^128.0.0",
-    "multer": "^2.0.2"
+    "multer": "^2.0.2",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0"
   }
 }
