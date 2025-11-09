@@ -308,12 +308,28 @@ async function importCSV() {
       // Show success message with summary
       const shifted = results.details.filter(d => d.wasShifted).length;
       let message = `Import complete!\n\n` +
-                   `• Created: ${results.created}\n` +
-                   `• Skipped (already exist): ${results.skipped}\n` +
-                   `• Errors: ${results.errors}`;
+                   `• Created: ${results.created}\n`;
+      
+      if (results.reminderEvents !== undefined) {
+        message += `  → Reminder: ${results.reminderEvents}\n`;
+      }
+      if (results.retentionEvents !== undefined) {
+        message += `  → Retention: ${results.retentionEvents}\n`;
+      }
+      
+      message += `• Skipped (already exist): ${results.skipped}\n` +
+                 `• Errors: ${results.errors}`;
       
       if (shifted > 0) {
         message += `\n• Weekend shifts: ${shifted}`;
+      }
+      
+      // Add attendee information
+      const hasAttendees = results.details.some(d => d.hasAttendees);
+      if (hasAttendees) {
+        message += `\n• Attendees: Enabled (invitations sent)`;
+      } else {
+        message += `\n• Attendees: Disabled`;
       }
       
       // Display detailed report in UI
@@ -378,9 +394,27 @@ function generateImportReport(results) {
   
   report += `SUMMARY:\n`;
   report += `Total Created: ${results.created}\n`;
+  if (results.reminderEvents !== undefined) {
+    report += `  • Reminder Events: ${results.reminderEvents}\n`;
+  }
+  if (results.retentionEvents !== undefined) {
+    report += `  • Retention Events: ${results.retentionEvents}\n`;
+  }
   report += `Total Skipped: ${results.skipped}\n`;
   report += `Total Errors: ${results.errors}\n`;
-  report += `Weekend Shifts: ${results.details.filter(d => d.wasShifted).length}\n\n`;
+  report += `Weekend Shifts: ${results.details.filter(d => d.wasShifted).length}\n`;
+  
+  // Show attendee information if available
+  const hasAttendees = results.details.some(d => d.hasAttendees);
+  if (hasAttendees) {
+    const firstWithAttendee = results.details.find(d => d.hasAttendees);
+    if (firstWithAttendee) {
+      report += `Invitations Sent To: Enabled (check server config for email)\n`;
+    }
+  } else {
+    report += `Invitations: Disabled (no attendees added)\n`;
+  }
+  report += `\n`;
   
   if (results.created > 0) {
     report += `CREATED EVENTS:\n`;
@@ -393,7 +427,26 @@ function generateImportReport(results) {
         if (event.wasShifted) {
           report += ` (shifted from ${event.originalDate})`;
         }
-        report += `\n\n`;
+        report += `\n`;
+        
+        // Add calendar type
+        if (event.calendarType) {
+          const calendarName = event.calendarType.charAt(0).toUpperCase() + event.calendarType.slice(1);
+          report += `Calendar: ${calendarName} Calendar\n`;
+        }
+        
+        // Add event type
+        if (event.eventType) {
+          const eventTypeName = event.eventType.charAt(0).toUpperCase() + event.eventType.slice(1);
+          report += `Type: ${eventTypeName}\n`;
+        }
+        
+        // Add attendee status
+        if (event.hasAttendees !== undefined) {
+          report += `Attendees: ${event.hasAttendees ? 'Yes' : 'No'}\n`;
+        }
+        
+        report += `\n`;
       });
   }
   
@@ -440,13 +493,32 @@ function displayImportReport(reportText, results) {
   const summary = document.createElement('div');
   summary.style.cssText = 'margin: 15px 0; padding: 15px; background: white; border-radius: 4px;';
   const shifted = results.details.filter(d => d.wasShifted).length;
-  summary.innerHTML = `
+  
+  // Check for attendee information
+  const hasAttendees = results.details.some(d => d.hasAttendees);
+  const attendeeNote = hasAttendees 
+    ? '• Attendees: <strong>Enabled</strong> (invitations sent)<br>' 
+    : '• Attendees: <strong>Disabled</strong> (no invitations sent)<br>';
+  
+  let summaryHTML = `
     <strong>Summary:</strong><br>
-    • Created: ${results.created}<br>
+    • Created: ${results.created}<br>`;
+  
+  if (results.reminderEvents !== undefined) {
+    summaryHTML += `  &nbsp;&nbsp;→ Reminder Events: ${results.reminderEvents}<br>`;
+  }
+  if (results.retentionEvents !== undefined) {
+    summaryHTML += `  &nbsp;&nbsp;→ Retention Events: ${results.retentionEvents}<br>`;
+  }
+  
+  summaryHTML += `
     • Skipped: ${results.skipped}<br>
     • Errors: ${results.errors}<br>
     ${shifted > 0 ? `• Weekend Shifts: ${shifted}<br>` : ''}
+    ${attendeeNote}
   `;
+  
+  summary.innerHTML = summaryHTML;
   reportContainer.appendChild(summary);
   
   // Add event list
@@ -459,8 +531,30 @@ function displayImportReport(reportText, results) {
       .filter(d => d.type === 'created')
       .forEach(event => {
         const shiftNote = event.wasShifted ? ` <span style="color: #ff9800;">(shifted from ${event.originalDate})</span>` : '';
+        
         eventHTML += `• ${event.title}<br>`;
-        eventHTML += `  Date: ${event.date}${shiftNote}<br><br>`;
+        eventHTML += `  Date: ${event.date}${shiftNote}<br>`;
+        
+        // Add calendar type
+        if (event.calendarType) {
+          const calendarName = event.calendarType.charAt(0).toUpperCase() + event.calendarType.slice(1);
+          eventHTML += `  Calendar: <strong>${calendarName}</strong><br>`;
+        }
+        
+        // Add event type
+        if (event.eventType) {
+          const eventTypeName = event.eventType.charAt(0).toUpperCase() + event.eventType.slice(1);
+          const typeColor = event.eventType === 'retention' ? '#2196f3' : '#4caf50';
+          eventHTML += `  Type: <span style="color: ${typeColor}; font-weight: bold;">${eventTypeName}</span><br>`;
+        }
+        
+        // Add attendee information
+        if (event.hasAttendees !== undefined) {
+          const attendeeText = event.hasAttendees ? '✅ Yes' : '❌ No';
+          eventHTML += `  Attendees: ${attendeeText}<br>`;
+        }
+        
+        eventHTML += `<br>`;
       });
     
     eventList.innerHTML = eventHTML;
