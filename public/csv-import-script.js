@@ -232,12 +232,19 @@ async function importCSV() {
       
       const { summary, sampleEvents } = currentPreviewData.data;
       
-      // Generate demo report data (simulate all events with proper date shifting)
+      // Count reminder and retention events from the actual event data
+      const allEvents = currentPreviewData.data.events || [];
+      const reminderCount = allEvents.filter(e => e.eventType === 'reminder').length;
+      const retentionCount = allEvents.filter(e => e.eventType === 'retention').length;
+      
+      // Generate demo report data (simulate all events with proper date shifting and metadata)
       const demoResults = {
         created: summary.totalEvents,
+        reminderEvents: reminderCount,
+        retentionEvents: retentionCount,
         skipped: 0,
         errors: 0,
-        details: currentPreviewData.data.events.map(event => {
+        details: allEvents.map(event => {
           const shifted = shiftWeekendToFriday(event.date);
           return {
             type: 'created',
@@ -245,12 +252,19 @@ async function importCSV() {
             title: `${event.participantId} - ${event.title}`,
             date: shifted.adjustedDate,
             wasShifted: shifted.wasShifted,
-            originalDate: shifted.originalDate
+            originalDate: shifted.originalDate,
+            calendarType: event.calendarType,
+            eventType: event.eventType,
+            hasAttendees: false, // Demo mode doesn't send attendees
           };
         })
       };
       
-      let message = `[DEMO] Would have created ${summary.totalEvents} events for ${summary.totalParticipants} participants at 9:00 AM\n\n`;
+      let message = `[DEMO] Would have created ${summary.totalEvents} events for ${summary.totalParticipants} participants\n\n`;
+      message += `Event breakdown:\n`;
+      message += `• Reminder events: ${reminderCount}\n`;
+      message += `• Retention events: ${retentionCount}\n`;
+      message += `• Attendees: Disabled (demo mode)\n\n`;
       
       // Show sample event details (with shifted dates)
       message += `Sample events that would be created:\n\n`;
@@ -259,10 +273,12 @@ async function importCSV() {
         return { ...event, shifted };
       });
       
-      shiftedSamples.forEach(({ participantId, title, shifted }) => {
+      shiftedSamples.forEach(({ participantId, title, shifted, eventType, calendarType }) => {
         const shiftNote = shifted.wasShifted ? ` (shifted from ${shifted.originalDate})` : '';
-        message += `${participantId} - ${title}\n`;
-        message += `   Date: ${shifted.adjustedDate}${shiftNote} at 9:00 AM\n\n`;
+        const calendar = calendarType ? ` [${calendarType.charAt(0).toUpperCase() + calendarType.slice(1)}]` : '';
+        const timeStr = eventType === 'retention' ? 'All-day' : '9:00 AM';
+        message += `${participantId} - ${title}${calendar}\n`;
+        message += `   Date: ${shifted.adjustedDate}${shiftNote} at ${timeStr}\n\n`;
       });
       
       if (summary.totalEvents > 3) {
