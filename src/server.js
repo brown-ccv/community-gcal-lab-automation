@@ -6,10 +6,14 @@ import { fileURLToPath } from 'url';
 import { google } from 'googleapis';
 import fs from 'fs';
 import multer from 'multer';
+import dotenv from 'dotenv';
 import { createEvents, deleteEvents, deleteAllDemoEvents, createEventsFromCSV, deleteRecentEvents } from './calendar.js';
 import { parseCSVFromBuffer, getEventSummary } from './csvParser.js';
 import { requireAuth, isAuthBypassed } from './middleware/auth.js';
 import { configurePassport, createAuthRoutes } from './routes/auth.js';
+
+// Load environment variables
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
