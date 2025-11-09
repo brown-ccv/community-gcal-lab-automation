@@ -24,7 +24,7 @@ async function deleteCSVEvents() {
   let allEvents = [];
 
   // Get unique calendar IDs
-  const calendarsToCheck = [...new Set([REMINDER_CALENDAR_ID, RETENTION_CALENDAR_ID])];
+  const calendarsToCheck = [...new Set([REMINDER_CALENDAR_ID, RETENTION_CALENDAR_ID, 'primary'])];
 
   // Search for events in each calendar
   for (const calendarId of calendarsToCheck) {
