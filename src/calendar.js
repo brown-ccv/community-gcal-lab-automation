@@ -413,30 +413,56 @@ function buildCSVEventKey(participantId, date, column) {
  * @param {Object} auth - Google OAuth2 client
  * @param {Array} events - Array of event objects from CSV parser
  * @param {string} time - Default time for events (e.g., "09:00")
- * @param {string} calendarId - Calendar ID (default: 'primary')
+ * @param {string} calendarId - Calendar ID (default: 'primary') - DEPRECATED, use reminderCalendarId/retentionCalendarId
+ * @param {string} reminderCalendarId - Calendar ID for reminder events
+ * @param {string} retentionCalendarId - Calendar ID for retention events
  * @param {boolean} dryRun - If true, don't actually create events
  * @param {boolean} demoMode - If true, mark events as demo for easy cleanup
+ * @param {boolean} enableAttendees - If true, add PRODUCTION_ATTENDEE_EMAIL to events
+ * @param {string} attendeeEmail - Email to add as attendee (when enableAttendees is true)
  * @returns {Object} Results summary
  */
-export async function createEventsFromCSV(auth, events, { time = '09:00', calendarId = 'primary', dryRun = false, demoMode = false }) {
+export async function createEventsFromCSV(auth, events, { 
+  time = '09:00', 
+  calendarId = 'primary', 
+  reminderCalendarId = null,
+  retentionCalendarId = null,
+  dryRun = false, 
+  demoMode = false,
+  enableAttendees = false,
+  attendeeEmail = null,
+}) {
   const calendar = google.calendar({ version: 'v3', auth });
   const results = {
     created: 0,
     skipped: 0,
     errors: 0,
     details: [],
+    reminderEvents: 0,
+    retentionEvents: 0,
   };
   
-  // Hardcoded time (9:00 AM - 9:30 AM)
+  // Hardcoded time (9:00 AM - 9:30 AM) for reminder events
   const eventTime = '09:00';
 
   for (const event of events) {
+    // Determine which calendar to use based on event type
+    let targetCalendarId;
+    if (event.calendarType === 'reminder') {
+      targetCalendarId = reminderCalendarId || calendarId;
+    } else if (event.calendarType === 'retention') {
+      targetCalendarId = retentionCalendarId || calendarId;
+    } else {
+      // Fallback to default calendar for unknown types
+      targetCalendarId = calendarId;
+    }
+
     const { adjustedDate: eventDate, wasShifted, originalDate } = shiftWeekendToFriday(event.date);
     const eventKey = buildCSVEventKey(event.participantId, eventDate, event.column);
     
     try {
       // Check if event already exists (idempotency)
-      const existingEvent = await findEventByKey(calendar, calendarId, eventKey);
+      const existingEvent = await findEventByKey(calendar, targetCalendarId, eventKey);
       
       if (existingEvent) {
         results.skipped++;
@@ -448,6 +474,7 @@ export async function createEventsFromCSV(auth, events, { time = '09:00', calend
           wasShifted,
           originalDate: wasShifted ? originalDate : null,
           reason: 'Event already exists',
+          calendarType: event.calendarType,
         });
         continue;
       }
@@ -460,51 +487,103 @@ export async function createEventsFromCSV(auth, events, { time = '09:00', calend
           date: eventDate,
           wasShifted,
           originalDate: wasShifted ? originalDate : null,
-          time: eventTime,
+          time: event.eventType === 'retention' ? 'All-day' : eventTime,
+          calendarType: event.calendarType,
         });
         continue;
       }
 
-      // Build event object
-      const startDateTime = buildDateTime(eventDate, eventTime);
-      const startDate = new Date(startDateTime);
-      const endDate = new Date(startDate.getTime() + DEFAULT_DURATION_MINUTES * 60000);
-      const endDateTime = endDate.toISOString().slice(0, 19);
-      
-      let description = `Participant ID: ${event.participantId}\nColumn: ${event.column}`;
+      // Build description
+      let description = `Participant ID: ${event.participantId}\nColumn: ${event.column}\nEvent Type: ${event.eventType}`;
+      if (event.baseDate) {
+        description += `\nBase Date: ${event.baseDate}\nRetention Date (45 days before): ${eventDate}`;
+      }
       if (wasShifted) {
         description += `\n\nNote: Original date ${originalDate} fell on a weekend and was shifted to ${eventDate} (Friday).`;
       }
 
-      const calendarEvent = {
-        summary: `${event.participantId} - ${event.title}`,
-        description,
-        start: {
-          dateTime: startDateTime,
-          timeZone: TIMEZONE,
-        },
-        end: {
-          dateTime: endDateTime,
-          timeZone: TIMEZONE,
-        },
-        extendedProperties: {
-          private: {
-            idempotencyKey: eventKey,
-            participantId: event.participantId,
-            column: event.column,
-            source: 'csv-import',
-            demoMode: demoMode ? 'true' : 'false',
+      // Build event object - different format for retention (all-day) vs reminder (timed)
+      let calendarEvent;
+      
+      if (event.eventType === 'retention') {
+        // All-day event for retention
+        const [month, day, year] = eventDate.split('/');
+        const dateOnly = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        
+        calendarEvent = {
+          summary: `${event.participantId} - ${event.title}`,
+          description,
+          start: {
+            date: dateOnly, // All-day events use 'date' instead of 'dateTime'
           },
-        },
-      };
+          end: {
+            date: dateOnly, // Same day
+          },
+          extendedProperties: {
+            private: {
+              idempotencyKey: eventKey,
+              participantId: event.participantId,
+              column: event.column,
+              eventType: event.eventType,
+              calendarType: event.calendarType,
+              source: 'csv-import',
+              demoMode: demoMode ? 'true' : 'false',
+            },
+          },
+        };
+      } else {
+        // Timed event for reminders (9:00 AM - 9:30 AM)
+        const startDateTime = buildDateTime(eventDate, eventTime);
+        const startDate = new Date(startDateTime);
+        const endDate = new Date(startDate.getTime() + DEFAULT_DURATION_MINUTES * 60000);
+        const endDateTime = endDate.toISOString().slice(0, 19);
+        
+        calendarEvent = {
+          summary: `${event.participantId} - ${event.title}`,
+          description,
+          start: {
+            dateTime: startDateTime,
+            timeZone: TIMEZONE,
+          },
+          end: {
+            dateTime: endDateTime,
+            timeZone: TIMEZONE,
+          },
+          extendedProperties: {
+            private: {
+              idempotencyKey: eventKey,
+              participantId: event.participantId,
+              column: event.column,
+              eventType: event.eventType,
+              calendarType: event.calendarType,
+              source: 'csv-import',
+              demoMode: demoMode ? 'true' : 'false',
+            },
+          },
+        };
+      }
+
+      // Add attendees if enabled
+      if (enableAttendees && attendeeEmail) {
+        calendarEvent.attendees = [{ email: attendeeEmail }];
+      }
 
       // Create the event
       const response = await calendar.events.insert({
-        calendarId,
+        calendarId: targetCalendarId,
         resource: calendarEvent,
+        sendUpdates: enableAttendees ? 'all' : 'none', // Only send emails if attendees enabled
       });
 
       results.created++;
+      
+      // Track event type counts
+      if (event.eventType === 'retention') {
+        results.retentionEvents++;
+      } else if (event.eventType === 'reminder') {
+        results.reminderEvents++;
+      }
+      
       results.details.push({
         type: 'created',
         participantId: event.participantId,
@@ -513,6 +592,9 @@ export async function createEventsFromCSV(auth, events, { time = '09:00', calend
         wasShifted,
         originalDate: wasShifted ? originalDate : null,
         eventId: response.data.id,
+        calendarType: event.calendarType,
+        eventType: event.eventType,
+        hasAttendees: enableAttendees && attendeeEmail ? true : false,
       });
 
     } catch (error) {
@@ -525,6 +607,7 @@ export async function createEventsFromCSV(auth, events, { time = '09:00', calend
         wasShifted,
         originalDate: wasShifted ? originalDate : null,
         error: error.message,
+        calendarType: event.calendarType,
       });
     }
   }

@@ -96,21 +96,49 @@ async function main() {
   }
   console.log('   This may take a few moments...\n');
 
+  // Get calendar configuration from environment
+  const reminderCalendarId = process.env.REMINDER_CALENDAR_ID;
+  const retentionCalendarId = process.env.RETENTION_CALENDAR_ID;
+  const enableAttendees = process.env.ENABLE_ATTENDEES === 'true';
+  const attendeeEmail = process.env.PRODUCTION_ATTENDEE_EMAIL;
+
+  // Show configuration
+  console.log('📋 Configuration:');
+  console.log(`   • Reminder Calendar: ${reminderCalendarId || 'Not set (using default)'}`);
+  console.log(`   • Retention Calendar: ${retentionCalendarId || 'Not set (using default)'}`);
+  console.log(`   • Attendees: ${enableAttendees ? `Enabled (${attendeeEmail})` : 'Disabled'}`);
+  console.log('');
+
   try {
-    const results = await createEventsFromCSV(auth, events, { time, dryRun });
+    const results = await createEventsFromCSV(auth, events, { 
+      time, 
+      dryRun,
+      reminderCalendarId,
+      retentionCalendarId,
+      enableAttendees,
+      attendeeEmail,
+    });
 
     if (dryRun) {
       console.log('\n✅ Dry run complete!');
       console.log(`   • Would create: ${results.details.length} events`);
+      console.log(`   • Reminder events: ${results.details.filter(d => d.calendarType === 'reminder').length}`);
+      console.log(`   • Retention events: ${results.details.filter(d => d.calendarType === 'retention').length}`);
       console.log('\n   Sample events (first 5):');
       for (const detail of results.details.slice(0, 5)) {
-        console.log(`   • [${detail.date} ${time}] ${detail.title} - Participant ${detail.participantId}`);
+        const timeStr = detail.time || time;
+        console.log(`   • [${detail.date} ${timeStr}] ${detail.title} - Participant ${detail.participantId} (${detail.calendarType})`);
       }
     } else {
       console.log('\n✅ Import complete!');
       console.log(`   • Created: ${results.created}`);
+      console.log(`   • Reminder events: ${results.reminderEvents}`);
+      console.log(`   • Retention events: ${results.retentionEvents}`);
       console.log(`   • Skipped (already exist): ${results.skipped}`);
       console.log(`   • Errors: ${results.errors}`);
+      if (enableAttendees) {
+        console.log(`   • Attendees added: ${attendeeEmail}`);
+      }
     }
 
     if (results.errors > 0) {

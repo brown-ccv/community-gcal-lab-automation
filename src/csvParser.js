@@ -20,6 +20,63 @@ const COLUMN_TITLE_MAP = {
 };
 
 /**
+ * Determine event type and calendar routing
+ * @param {string} column - CSV column name
+ * @returns {Object} - { type: 'reminder'|'retention'|'base', calendarType: 'reminder'|'retention'|null }
+ */
+function getEventMetadata(column) {
+  // Base date columns (B2/B3/B4STARTDATE) are used for retention calculation only
+  if (column === 'B2STARTDATE' || column === 'B3STARTDATE' || column === 'B4STARTDATE') {
+    return { type: 'base', calendarType: null };
+  }
+  
+  // MIN10 and MIN1 columns are reminder events
+  if (column.includes('MIN')) {
+    return { type: 'reminder', calendarType: 'reminder' };
+  }
+  
+  // B1STARTDATE is the original base date (not used for retention)
+  if (column === 'B1STARTDATE') {
+    return { type: 'base', calendarType: null };
+  }
+  
+  return { type: 'unknown', calendarType: null };
+}
+
+/**
+ * Calculate retention date (45 days before base date)
+ * @param {string} baseDateStr - Date in MM/DD/YYYY format
+ * @returns {string|null} - Date in MM/DD/YYYY format, or null if invalid
+ */
+function calculateRetentionDate(baseDateStr) {
+  try {
+    // Parse MM/DD/YYYY
+    const [month, day, year] = baseDateStr.split('/').map(s => parseInt(s.trim(), 10));
+    
+    // Validate date components
+    if (isNaN(month) || isNaN(day) || isNaN(year)) {
+      return null;
+    }
+    
+    // Create date object (month is 0-indexed in JavaScript)
+    const baseDate = new Date(year, month - 1, day);
+    
+    // Subtract 45 days
+    baseDate.setDate(baseDate.getDate() - 45);
+    
+    // Format back to MM/DD/YYYY
+    const retentionMonth = String(baseDate.getMonth() + 1).padStart(2, '0');
+    const retentionDay = String(baseDate.getDate()).padStart(2, '0');
+    const retentionYear = baseDate.getFullYear();
+    
+    return `${retentionMonth}/${retentionDay}/${retentionYear}`;
+  } catch (error) {
+    console.error(`Error calculating retention date from ${baseDateStr}:`, error);
+    return null;
+  }
+}
+
+/**
  * Parse CSV file and extract events
  * @param {string} filePath - Path to CSV file
  * @returns {Array} Array of event objects
@@ -34,6 +91,7 @@ export function parseCSV(filePath) {
   });
 
   const events = [];
+  const retentionBaseDates = {}; // Store base dates for retention calculation
 
   for (const record of records) {
     // Only process Active participants
@@ -43,7 +101,18 @@ export function parseCSV(filePath) {
 
     const participantId = record.ID;
 
-    // Process each date column
+    // First pass: collect base dates for retention events
+    for (const baseColumn of ['B2STARTDATE', 'B3STARTDATE', 'B4STARTDATE']) {
+      const baseDate = record[baseColumn];
+      if (baseDate && baseDate.trim() !== '') {
+        if (!retentionBaseDates[participantId]) {
+          retentionBaseDates[participantId] = {};
+        }
+        retentionBaseDates[participantId][baseColumn] = baseDate.trim();
+      }
+    }
+
+    // Second pass: process reminder events (dates from CSV)
     for (const [column, title] of Object.entries(COLUMN_TITLE_MAP)) {
       const dateValue = record[column];
       
@@ -52,12 +121,44 @@ export function parseCSV(filePath) {
         continue;
       }
 
+      const metadata = getEventMetadata(column);
+      
+      // Only process reminder events in this pass (skip base dates)
+      if (metadata.type !== 'reminder') {
+        continue;
+      }
+
       events.push({
         participantId,
         title,
         date: dateValue.trim(),
-        column, // Keep column name for tracking
+        column,
+        eventType: metadata.type,
+        calendarType: metadata.calendarType,
       });
+    }
+  }
+
+  // Third pass: create retention events based on base dates
+  for (const [participantId, baseDates] of Object.entries(retentionBaseDates)) {
+    for (const [baseColumn, baseDate] of Object.entries(baseDates)) {
+      // Extract BURST number from column name (e.g., 'B2STARTDATE' -> '2')
+      const burstNumber = baseColumn.charAt(1);
+      
+      // Calculate retention date (45 days before base date)
+      const retentionDate = calculateRetentionDate(baseDate);
+      
+      if (retentionDate) {
+        events.push({
+          participantId,
+          title: `BURST ${burstNumber} Retention Text`,
+          date: retentionDate,
+          column: baseColumn,
+          eventType: 'retention',
+          calendarType: 'retention',
+          baseDate: baseDate, // Keep original base date for reference
+        });
+      }
     }
   }
 
@@ -79,6 +180,7 @@ export function parseCSVFromBuffer(buffer) {
   });
 
   const events = [];
+  const retentionBaseDates = {}; // Store base dates for retention calculation
 
   for (const record of records) {
     // Only process Active participants
@@ -88,7 +190,18 @@ export function parseCSVFromBuffer(buffer) {
 
     const participantId = record.ID;
 
-    // Process each date column
+    // First pass: collect base dates for retention events
+    for (const baseColumn of ['B2STARTDATE', 'B3STARTDATE', 'B4STARTDATE']) {
+      const baseDate = record[baseColumn];
+      if (baseDate && baseDate.trim() !== '') {
+        if (!retentionBaseDates[participantId]) {
+          retentionBaseDates[participantId] = {};
+        }
+        retentionBaseDates[participantId][baseColumn] = baseDate.trim();
+      }
+    }
+
+    // Second pass: process reminder events (dates from CSV)
     for (const [column, title] of Object.entries(COLUMN_TITLE_MAP)) {
       const dateValue = record[column];
       
@@ -97,12 +210,44 @@ export function parseCSVFromBuffer(buffer) {
         continue;
       }
 
+      const metadata = getEventMetadata(column);
+      
+      // Only process reminder events in this pass (skip base dates)
+      if (metadata.type !== 'reminder') {
+        continue;
+      }
+
       events.push({
         participantId,
         title,
         date: dateValue.trim(),
         column,
+        eventType: metadata.type,
+        calendarType: metadata.calendarType,
       });
+    }
+  }
+
+  // Third pass: create retention events based on base dates
+  for (const [participantId, baseDates] of Object.entries(retentionBaseDates)) {
+    for (const [baseColumn, baseDate] of Object.entries(baseDates)) {
+      // Extract BURST number from column name (e.g., 'B2STARTDATE' -> '2')
+      const burstNumber = baseColumn.charAt(1);
+      
+      // Calculate retention date (45 days before base date)
+      const retentionDate = calculateRetentionDate(baseDate);
+      
+      if (retentionDate) {
+        events.push({
+          participantId,
+          title: `BURST ${burstNumber} Retention Text`,
+          date: retentionDate,
+          column: baseColumn,
+          eventType: 'retention',
+          calendarType: 'retention',
+          baseDate: baseDate, // Keep original base date for reference
+        });
+      }
     }
   }
 

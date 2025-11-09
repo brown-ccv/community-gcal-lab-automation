@@ -394,7 +394,28 @@ app.post('/api/csv/import', requireAuth, upload.single('csvFile'), async (req, r
     const events = parseCSVFromBuffer(req.file.buffer);
     const auth = getAuthorizedClient();
 
-    const results = await createEventsFromCSV(auth, events, { demoMode });
+    // Get calendar configuration from environment
+    const reminderCalendarId = process.env.REMINDER_CALENDAR_ID;
+    const retentionCalendarId = process.env.RETENTION_CALENDAR_ID;
+    const enableAttendees = process.env.ENABLE_ATTENDEES === 'true';
+    const attendeeEmail = process.env.PRODUCTION_ATTENDEE_EMAIL;
+
+    // Validate calendar configuration
+    if (!reminderCalendarId || !retentionCalendarId) {
+      console.warn('⚠️  REMINDER_CALENDAR_ID or RETENTION_CALENDAR_ID not set. Using default calendar.');
+    }
+
+    if (enableAttendees && !attendeeEmail) {
+      console.warn('⚠️  ENABLE_ATTENDEES is true but PRODUCTION_ATTENDEE_EMAIL not set. No attendees will be added.');
+    }
+
+    const results = await createEventsFromCSV(auth, events, { 
+      demoMode,
+      reminderCalendarId,
+      retentionCalendarId,
+      enableAttendees,
+      attendeeEmail,
+    });
 
     res.json({
       success: true,
