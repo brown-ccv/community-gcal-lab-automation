@@ -173,7 +173,7 @@ All documentation is in the respective folders:
 - **`.deployment/DEPLOYMENT.md`** - Complete cloud deployment guide (Google Cloud Run)
 - `docs/WEB_USER_GUIDE.md` - Simple guide for lab members
 - `docs/SETUP_GUIDE.md` - Google Calendar API setup (detailed)
-- `docs/DEPLOYMENT_PLAN.md` - Original Render.com deployment plan (archived)
+- `docs/setup/DEPLOYMENT_PLAN.md` - Original Render.com deployment plan (archived)
 - `docs/CUSTOMIZATION.md` - How to modify intervals, times, etc.
 - `docs/PHASE1_COMPLETE.md` - Phase 1 summary and next steps
 - `docs/design-qs.md` - Design decisions and requirements
