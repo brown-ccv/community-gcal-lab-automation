@@ -214,7 +214,7 @@ cd .deployment/scripts/gcp
   - `roles/run.invoker` - Invoke services
   - `roles/iam.serviceAccountUser` - Use service account
   - `roles/secretmanager.secretAccessor` - Read secrets
-  - `roles/artifactregistry.writer` - Push Docker images
+  - `roles/artifactregistry.admin` - Create and manage Artifact Registry repositories
   - `roles/cloudbuild.builds.builder` - Build images
   - `roles/serviceusage.serviceUsageAdmin` - Enable and list APIs
   - `roles/logging.logWriter` - Write logs

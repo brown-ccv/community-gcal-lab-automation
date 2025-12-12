@@ -98,7 +98,7 @@ echo "Assigning deployment roles to service account..."
 DEPLOY_ROLES=(
   "roles/run.admin"
   "roles/iam.serviceAccountUser"
-  "roles/artifactregistry.writer"
+  "roles/artifactregistry.admin"
   "roles/cloudbuild.builds.builder"
   "roles/serviceusage.serviceUsageAdmin"
 )
