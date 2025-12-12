@@ -107,10 +107,36 @@ This application is deployed to **Google Cloud Run**, a fully managed serverless
    Required scopes: `repo`, `workflow`, `admin:repo_hook`
 
 2. **Fork/Clone Repository**
+   
+   **Option A: Using the original repository (recommended for Brown University)**
    ```bash
    git clone https://github.com/brown-ccv/community-gcal-lab-automation.git
    cd community-gcal-lab-automation
    ```
+   
+   **Option B: Using your own fork**
+   
+   If you've forked the repository to your own account:
+   ```bash
+   # Clone your fork
+   git clone https://github.com/YOUR_USERNAME/community-gcal-lab-automation.git
+   cd community-gcal-lab-automation
+   
+   # Set the repository context for gh CLI
+   # This ensures GitHub Actions and secrets are configured in your fork
+   gh repo set-default YOUR_USERNAME/community-gcal-lab-automation
+   ```
+   
+   **Verify repository context:**
+   ```bash
+   # Check which repository gh CLI is using
+   gh repo view --json nameWithOwner -q .nameWithOwner
+   
+   # Should output: brown-ccv/community-gcal-lab-automation (original)
+   # Or: YOUR_USERNAME/community-gcal-lab-automation (your fork)
+   ```
+   
+   **Note:** GitHub Actions workflows and secrets will be configured in whichever repository you're currently working with. Make sure you're in the correct repository directory before running the setup scripts.
 
 ---
 
