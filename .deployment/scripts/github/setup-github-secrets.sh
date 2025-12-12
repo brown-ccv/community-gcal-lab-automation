@@ -135,8 +135,8 @@ if gh secret list -R "$REPO" | grep -q "GCP_SERVICE_ACCOUNT_KEY"; then
   else
     echo ""
     echo "Enter the path to your service account key JSON file:"
-    echo "(e.g., /tmp/gcal-lab-automation-sa-key.json)"
-    read -r KEY_FILE_PATH
+    read -r -p "[/tmp/gcal-lab-automation-sa-key.json]: " KEY_FILE_PATH
+    KEY_FILE_PATH=${KEY_FILE_PATH:-/tmp/gcal-lab-automation-sa-key.json}
     
     if [ ! -f "$KEY_FILE_PATH" ]; then
       echo "ERROR: File not found: ${KEY_FILE_PATH}"
@@ -148,8 +148,8 @@ if gh secret list -R "$REPO" | grep -q "GCP_SERVICE_ACCOUNT_KEY"; then
   fi
 else
   echo "Enter the path to your service account key JSON file:"
-  echo "(e.g., /tmp/gcal-lab-automation-sa-key.json)"
-  read -r KEY_FILE_PATH
+  read -r -p "[/tmp/gcal-lab-automation-sa-key.json]: " KEY_FILE_PATH
+  KEY_FILE_PATH=${KEY_FILE_PATH:-/tmp/gcal-lab-automation-sa-key.json}
   
   if [ ! -f "$KEY_FILE_PATH" ]; then
     echo "ERROR: File not found: ${KEY_FILE_PATH}"
