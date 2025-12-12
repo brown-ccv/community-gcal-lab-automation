@@ -201,8 +201,19 @@ Key File: /tmp/gcal-lab-automation-sa-key.json
 
 **Required values** (gather these first):
 
-1. **AUTH_CLIENT_ID** & **AUTH_CLIENT_SECRET**
+1. **Google OAuth 2.0 Setup**
+   
+   **First, configure OAuth Consent Screen:**
    - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Navigate to: APIs & Services → OAuth consent screen
+   - User Type: **Internal** (for Brown University users only)
+   - App name: "GCal Lab Automation"
+   - **User support email**: Your administrator email address (required)
+   - **Developer contact email**: Your administrator email address (required)
+   - Scopes: Add `https://www.googleapis.com/auth/calendar`
+   - Save and continue
+   
+   **Then, create OAuth credentials:**
    - Navigate to: APIs & Services → Credentials
    - Click: Create Credentials → OAuth client ID
    - Application type: **Web application**
