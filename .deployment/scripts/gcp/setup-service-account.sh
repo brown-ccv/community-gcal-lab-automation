@@ -100,6 +100,7 @@ DEPLOY_ROLES=(
   "roles/iam.serviceAccountUser"
   "roles/artifactregistry.writer"
   "roles/cloudbuild.builds.builder"
+  "roles/serviceusage.serviceUsageAdmin"
 )
 
 for ROLE in "${DEPLOY_ROLES[@]}"; do

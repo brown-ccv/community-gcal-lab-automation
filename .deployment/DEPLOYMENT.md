@@ -216,6 +216,7 @@ cd .deployment/scripts/gcp
   - `roles/secretmanager.secretAccessor` - Read secrets
   - `roles/artifactregistry.writer` - Push Docker images
   - `roles/cloudbuild.builds.builder` - Build images
+  - `roles/serviceusage.serviceUsageAdmin` - Enable and list APIs
   - `roles/logging.logWriter` - Write logs
   - `roles/cloudtrace.agent` - Send traces
   - `roles/monitoring.metricWriter` - Write metrics
