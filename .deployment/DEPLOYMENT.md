@@ -42,35 +42,39 @@ This application is deployed to **Google Cloud Run**, a fully managed serverless
 
 ### Required Tools
 
-1. **Google Cloud SDK** (gcloud CLI)
-   ```bash
-   # Install (macOS)
-   brew install google-cloud-sdk
-   
-   # Install (Linux)
-   curl https://sdk.cloud.google.com | bash
-   exec -l $SHELL
-   
-   # Install (Windows)
-   # Download from: https://cloud.google.com/sdk/docs/install
-   ```
+#### macOS
+```bash
+# Install Google Cloud SDK and GitHub CLI using Brewfile
+brew bundle --file=.deployment/Brewfile
 
-2. **GitHub CLI** (gh)
-   ```bash
-   # Install (macOS)
-   brew install gh
-   
-   # Install (Linux)
-   sudo apt install gh
-   
-   # Install (Windows)
-   winget install GitHub.cli
-   ```
+# Install Docker Desktop
+# Download from: https://docs.docker.com/desktop/install/mac-install/
+```
 
-3. **Docker** (for local testing)
-   ```bash
-   # Install from: https://docs.docker.com/get-docker/
-   ```
+#### Linux
+```bash
+# Install Google Cloud SDK
+curl https://sdk.cloud.google.com | bash
+exec -l $SHELL
+
+# Install GitHub CLI
+sudo apt install gh
+
+# Install Docker
+# Follow instructions at: https://docs.docker.com/engine/install/
+```
+
+#### Windows
+```bash
+# Install Google Cloud SDK
+# Download from: https://cloud.google.com/sdk/docs/install
+
+# Install GitHub CLI
+winget install GitHub.cli
+
+# Install Docker Desktop
+# Download from: https://docs.docker.com/desktop/install/windows-install/
+```
 
 ### GCP Account Setup
 

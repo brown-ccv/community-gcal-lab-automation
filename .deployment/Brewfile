@@ -1,0 +1,8 @@
+# Brewfile for deployment tools
+# Install with: brew bundle --file=.deployment/Brewfile
+
+# Google Cloud SDK
+cask "google-cloud-sdk"
+
+# GitHub CLI
+brew "gh"
