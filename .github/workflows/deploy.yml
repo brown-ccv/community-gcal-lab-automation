@@ -135,6 +135,7 @@ jobs:
         uses: actions/checkout@v4
         
       - name: 🔐 Authenticate to Google Cloud
+        id: auth
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
@@ -168,59 +169,43 @@ jobs:
           fi
           
       - name: 🐳 Build and push Docker image
-        run: |
-          PROJECT_ID="${{ needs.prepare.outputs.project-id }}"
-          IMAGE="${{ env.GCP_REGION }}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}"
-          
-          echo "🔨 Building Docker image..."
-          docker build \
-            -f .deployment/Dockerfile \
-            -t "${IMAGE}:${{ github.sha }}" \
-            -t "${IMAGE}:latest" \
-            . | tee docker-build.log
-          
-          echo "📤 Pushing to Artifact Registry..."
-          docker push "${IMAGE}:${{ github.sha }}" | tee -a docker-build.log
-          docker push "${IMAGE}:latest" | tee -a docker-build.log
-          
-          echo "✅ Image pushed successfully"
-          echo "IMAGE_URL=${IMAGE}:${{ github.sha }}" >> $GITHUB_ENV
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .deployment/Dockerfile
+          push: true
+          tags: |
+            ${{ env.GCP_REGION }}-docker.pkg.dev/${{ needs.prepare.outputs.project-id }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:${{ github.sha }}
+            ${{ env.GCP_REGION }}-docker.pkg.dev/${{ needs.prepare.outputs.project-id }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:latest
           
       - name: 🚀 Deploy to Cloud Run
         id: deploy
-        run: |
-          PROJECT_ID="${{ needs.prepare.outputs.project-id }}"
-          SA_EMAIL="${{ needs.prepare.outputs.service-account }}"
-          
-          echo "🚀 Deploying to Cloud Run..."
-          
-          gcloud run deploy ${{ env.SERVICE_NAME }} \
-            --image="${IMAGE_URL}" \
-            --region="${{ env.GCP_REGION }}" \
-            --platform=managed \
-            --service-account="${SA_EMAIL}" \
-            --allow-unauthenticated \
-            --port=8080 \
-            --cpu=1 \
-            --memory=512Mi \
-            --timeout=300 \
-            --min-instances=0 \
-            --max-instances=10 \
-            --set-env-vars="NODE_ENV=production,PORT=8080,DEMO_MODE=false,BYPASS_AUTH=false,ALLOWED_DOMAIN=brown.edu" \
-            --set-secrets="AUTH_CLIENT_ID=auth-client-id:latest,AUTH_CLIENT_SECRET=auth-client-secret:latest,SESSION_SECRET=session-secret:latest,REMINDER_CALENDAR_ID=reminder-calendar-id:latest,RETENTION_CALENDAR_ID=retention-calendar-id:latest" \
-            --project="${PROJECT_ID}" \
-            --quiet \
-            | tee deploy.log
-          
-          # Get service URL
-          SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
-            --region="${{ env.GCP_REGION }}" \
-            --project="${PROJECT_ID}" \
-            --format="value(status.url)")
-          
-          echo "url=${SERVICE_URL}" >> $GITHUB_OUTPUT
-          echo "✅ Deployment successful!"
-          echo "🌐 Service URL: ${SERVICE_URL}"
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          region: ${{ env.GCP_REGION }}
+          image: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ needs.prepare.outputs.project-id }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          flags: |
+            --service-account=${{ needs.prepare.outputs.service-account }}
+            --allow-unauthenticated
+            --port=8080
+            --cpu=1
+            --memory=512Mi
+            --timeout=300
+            --min-instances=0
+            --max-instances=10
+          env_vars: |
+            NODE_ENV=production
+            PORT=8080
+            DEMO_MODE=false
+            BYPASS_AUTH=false
+            ALLOWED_DOMAIN=brown.edu
+          secrets: |
+            AUTH_CLIENT_ID=auth-client-id:latest
+            AUTH_CLIENT_SECRET=auth-client-secret:latest
+            SESSION_SECRET=session-secret:latest
+            REMINDER_CALENDAR_ID=reminder-calendar-id:latest
+            RETENTION_CALENDAR_ID=retention-calendar-id:latest
           
       - name: 🏥 Health check
         if: success()
@@ -259,19 +244,9 @@ jobs:
           echo "- **Service:** ${{ env.SERVICE_NAME }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Region:** ${{ env.GCP_REGION }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Environment:** ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Image:** ${IMAGE_URL}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image:** ${{ env.GCP_REGION }}-docker.pkg.dev/${{ needs.prepare.outputs.project-id }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "- **URL:** ${{ steps.deploy.outputs.url }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          
-      - name: 📤 Upload build logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: deployment-logs
-          path: |
-            docker-build.log
-            deploy.log
-          retention-days: 7
 
   # ============================================================================
   # Phase 3: TEARDOWN - Cleanup and rollback on failure
