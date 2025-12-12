@@ -40,36 +40,47 @@ This application is deployed to **Google Cloud Run**, a fully managed serverless
 
 ## Prerequisites
 
-### Required Tools
+### Development Environment
+
+**Recommended Setup**: Use GitHub Codespaces or a devcontainer for a consistent Linux environment with all tools pre-installed.
+
+#### Option A: GitHub Codespaces (Recommended)
+
+1. Navigate to the repository on GitHub
+2. Click the **Code** button → **Codespaces** tab → **Create codespace on main**
+3. Wait for the codespace to initialize
+4. All required tools (gcloud, gh, docker) will be available
+
+#### Option B: Local Devcontainer
+
+1. Install [Docker Desktop](https://docs.docker.com/get-docker/)
+2. Install [VS Code](https://code.visualstudio.com/) with the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+3. Clone the repository and open in VS Code
+4. Click "Reopen in Container" when prompted
+5. All required tools will be available inside the container
+
+#### Option C: Local Linux Environment
+
+If you prefer to work in your local Linux environment, install the following tools:
 
 1. **Google Cloud SDK** (gcloud CLI)
    ```bash
-   # Install (macOS)
-   brew install google-cloud-sdk
-   
-   # Install (Linux)
    curl https://sdk.cloud.google.com | bash
    exec -l $SHELL
-   
-   # Install (Windows)
-   # Download from: https://cloud.google.com/sdk/docs/install
    ```
 
 2. **GitHub CLI** (gh)
    ```bash
-   # Install (macOS)
-   brew install gh
-   
-   # Install (Linux)
+   # Ubuntu/Debian
    sudo apt install gh
    
-   # Install (Windows)
-   winget install GitHub.cli
+   # Fedora/RHEL
+   sudo dnf install gh
    ```
 
-3. **Docker** (for local testing)
+3. **Docker** (for local testing - optional)
    ```bash
-   # Install from: https://docs.docker.com/get-docker/
+   # Follow instructions at: https://docs.docker.com/engine/install/
    ```
 
 ### GCP Account Setup
