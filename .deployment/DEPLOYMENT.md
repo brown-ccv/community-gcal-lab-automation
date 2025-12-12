@@ -711,11 +711,25 @@ gcloud run deploy ${SERVICE_NAME} \
   --project=${PROJECT_ID} \
   --quiet
 
-echo "✅ Deployment complete!"
-gcloud run services describe ${SERVICE_NAME} \
+echo "✅ Initial deployment complete!"
+
+# Get the service URL
+SERVICE_URL=$(gcloud run services describe ${SERVICE_NAME} \
   --region=${REGION} \
   --project=${PROJECT_ID} \
-  --format="value(status.url)"
+  --format="value(status.url)")
+
+echo "Service URL: ${SERVICE_URL}"
+
+# Set AUTH_CALLBACK_URL based on the deployed service URL
+echo "🔗 Configuring AUTH_CALLBACK_URL..."
+gcloud run services update ${SERVICE_NAME} \
+  --region=${REGION} \
+  --update-env-vars=AUTH_CALLBACK_URL="${SERVICE_URL}/auth/google/callback" \
+  --project=${PROJECT_ID} \
+  --quiet
+
+echo "✅ AUTH_CALLBACK_URL configured: ${SERVICE_URL}/auth/google/callback"
 ```
 
 Save as `.deployment/scripts/deploy.sh`, make executable, and run:

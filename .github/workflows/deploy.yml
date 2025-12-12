@@ -205,6 +205,17 @@ jobs:
             SESSION_SECRET=session-secret:latest
             REMINDER_CALENDAR_ID=reminder-calendar-id:latest
             RETENTION_CALENDAR_ID=retention-calendar-id:latest
+      
+      - name: 🔗 Set AUTH_CALLBACK_URL
+        run: |
+          SERVICE_URL="${{ steps.deploy.outputs.url }}"
+          echo "Setting AUTH_CALLBACK_URL to: ${SERVICE_URL}/auth/google/callback"
+          
+          gcloud run services update ${{ env.SERVICE_NAME }} \
+            --region=${{ env.GCP_REGION }} \
+            --update-env-vars=AUTH_CALLBACK_URL="${SERVICE_URL}/auth/google/callback"
+          
+          echo "✅ AUTH_CALLBACK_URL configured"
           
       - name: 🏥 Health check
         if: success()
