@@ -51,10 +51,11 @@ create_secret() {
       return
     fi
   else
-    # Create the secret
-    echo "Creating secret..."
+    # Create the secret with regional replication
+    echo "Creating secret in us-east1..."
     gcloud secrets create "${SECRET_NAME}" \
-      --replication-policy="automatic" \
+      --replication-policy="user-managed" \
+      --locations="us-east1" \
       --project="${PROJECT_ID}"
     echo "Secret created"
   fi
@@ -120,9 +121,10 @@ if gcloud secrets describe "session-secret" --project="${PROJECT_ID}" &>/dev/nul
     echo "New session secret generated"
   fi
 else
-  echo "Generating random session secret..."
+  echo "Generating random session secret in us-east1..."
   gcloud secrets create "session-secret" \
-    --replication-policy="automatic" \
+    --replication-policy="user-managed" \
+    --locations="us-east1" \
     --project="${PROJECT_ID}"
   
   SESSION_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
