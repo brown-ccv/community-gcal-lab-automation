@@ -41,6 +41,7 @@ echo "Authenticated with GitHub"
 echo ""
 
 # Get repository info
+echo "Detecting repository..."
 REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null)
 
 if [ -z "$REPO" ]; then
@@ -48,7 +49,31 @@ if [ -z "$REPO" ]; then
   exit 1
 fi
 
-echo "Repository: ${REPO}"
+echo "Current repository: ${REPO}"
+echo ""
+
+# Allow user to choose a different repository if needed
+read -p "Is this the correct repository? (y/n) " -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+  echo ""
+  echo "Available repositories:"
+  gh repo list --json nameWithOwner -q '.[].nameWithOwner' | nl
+  echo ""
+  echo "Enter the full repository name (e.g., owner/repo-name):"
+  read -r REPO_INPUT
+  
+  if [ -n "$REPO_INPUT" ]; then
+    REPO="$REPO_INPUT"
+    echo "Using repository: ${REPO}"
+  else
+    echo "ERROR: No repository specified"
+    exit 1
+  fi
+fi
+
+echo ""
+echo "Configuring secrets for: ${REPO}"
 echo ""
 
 # Instructions
@@ -72,7 +97,7 @@ echo "================================================================"
 echo ""
 
 # Check if secret already exists
-if gh secret list | grep -q "GCP_SERVICE_ACCOUNT_KEY"; then
+if gh secret list -R "$REPO" | grep -q "GCP_SERVICE_ACCOUNT_KEY"; then
   echo "Secret GCP_SERVICE_ACCOUNT_KEY already exists"
   read -p "Do you want to update it? (y/n) " -n 1 -r
   echo
@@ -88,7 +113,7 @@ if gh secret list | grep -q "GCP_SERVICE_ACCOUNT_KEY"; then
       echo "ERROR: File not found: ${KEY_FILE_PATH}"
     else
       echo "Setting secret..."
-      gh secret set GCP_SERVICE_ACCOUNT_KEY < "$KEY_FILE_PATH"
+      gh secret set GCP_SERVICE_ACCOUNT_KEY -R "$REPO" < "$KEY_FILE_PATH"
       echo "Secret updated"
     fi
   fi
@@ -104,7 +129,7 @@ else
   fi
   
   echo "Setting secret..."
-  gh secret set GCP_SERVICE_ACCOUNT_KEY < "$KEY_FILE_PATH"
+  gh secret set GCP_SERVICE_ACCOUNT_KEY -R "$REPO" < "$KEY_FILE_PATH"
   echo "Secret created"
   
   echo ""

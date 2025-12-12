@@ -23,11 +23,42 @@ if ! gh auth status &>/dev/null; then
 fi
 
 # Get repository info
+echo "Detecting repository..."
 REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null)
+
+if [ -z "$REPO" ]; then
+  echo "ERROR: Not in a GitHub repository"
+  exit 1
+fi
+
+echo "Current repository: ${REPO}"
+echo ""
+
+# Allow user to choose a different repository if needed
+read -p "Is this the correct repository? (y/n) " -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+  echo ""
+  echo "Available repositories:"
+  gh repo list --json nameWithOwner -q '.[].nameWithOwner' | nl
+  echo ""
+  echo "Enter the full repository name (e.g., owner/repo-name):"
+  read -r REPO_INPUT
+  
+  if [ -n "$REPO_INPUT" ]; then
+    REPO="$REPO_INPUT"
+    echo "Using repository: ${REPO}"
+  else
+    echo "ERROR: No repository specified"
+    exit 1
+  fi
+fi
+
 OWNER=$(echo "$REPO" | cut -d'/' -f1)
 REPO_NAME=$(echo "$REPO" | cut -d'/' -f2)
 
-echo "Repository: ${REPO}"
+echo ""
+echo "Configuring environments for: ${REPO}"
 echo ""
 
 # Function to create environment
