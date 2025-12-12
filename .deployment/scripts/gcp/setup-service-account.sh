@@ -5,14 +5,8 @@
 
 set -e
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
 echo "================================================================"
-echo "  🔐 Google Cloud Service Account Setup"
+echo "  Google Cloud Service Account Setup"
 echo "================================================================"
 echo ""
 
@@ -21,25 +15,25 @@ SERVICE_NAME="gcal-lab-automation"
 SA_NAME="${SERVICE_NAME}-sa"
 
 # Get project ID
-echo "🔍 Detecting GCP project..."
+echo "Detecting GCP project..."
 PROJECT_ID=$(gcloud config get-value project 2>/dev/null)
 
 if [ -z "$PROJECT_ID" ]; then
-  echo -e "${RED}❌ No GCP project configured${NC}"
+  echo "ERROR: No GCP project configured"
   echo "Please run: gcloud config set project YOUR_PROJECT_ID"
   exit 1
 fi
 
-echo -e "${GREEN}✅ Project ID: ${PROJECT_ID}${NC}"
+echo "Project ID: ${PROJECT_ID}"
 echo ""
 
 # Service account email
 SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 
 # Check if service account already exists
-echo "🔍 Checking if service account exists..."
+echo "Checking if service account exists..."
 if gcloud iam service-accounts describe "${SA_EMAIL}" &>/dev/null; then
-  echo -e "${YELLOW}⚠️  Service account already exists: ${SA_EMAIL}${NC}"
+  echo "Service account already exists: ${SA_EMAIL}"
   read -p "Do you want to update its roles? (y/n) " -n 1 -r
   echo
   if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -48,30 +42,30 @@ if gcloud iam service-accounts describe "${SA_EMAIL}" &>/dev/null; then
   fi
 else
   # Create service account
-  echo "🔄 Creating service account..."
+  echo "Creating service account..."
   gcloud iam service-accounts create "${SA_NAME}" \
     --display-name="Cloud Run service account for ${SERVICE_NAME}" \
     --description="Automated service account for Cloud Run deployment" \
     --project="${PROJECT_ID}"
   
-  echo -e "${GREEN}✅ Service account created: ${SA_EMAIL}${NC}"
+  echo "Service account created: ${SA_EMAIL}"
 fi
 
 echo ""
-echo "🔐 Assigning IAM roles..."
+echo "Assigning IAM roles..."
 
 # Required roles for Cloud Run service account
 ROLES=(
-  "roles/run.invoker"                  # Invoke Cloud Run services
-  "roles/cloudsql.client"             # Access Cloud SQL (if needed)
-  "roles/secretmanager.secretAccessor" # Access secrets
-  "roles/logging.logWriter"           # Write logs
-  "roles/cloudtrace.agent"            # Send traces
-  "roles/monitoring.metricWriter"     # Write metrics
+  "roles/run.invoker"
+  "roles/cloudsql.client"
+  "roles/secretmanager.secretAccessor"
+  "roles/logging.logWriter"
+  "roles/cloudtrace.agent"
+  "roles/monitoring.metricWriter"
 )
 
 for ROLE in "${ROLES[@]}"; do
-  echo "  → Assigning ${ROLE}..."
+  echo "  Assigning ${ROLE}..."
   gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${SA_EMAIL}" \
     --role="${ROLE}" \
@@ -79,15 +73,15 @@ for ROLE in "${ROLES[@]}"; do
     --quiet
 done
 
-echo -e "${GREEN}✅ All roles assigned${NC}"
+echo "All roles assigned"
 echo ""
 
 # Create service account key for GitHub Actions
-echo "🔑 Creating service account key for GitHub Actions..."
+echo "Creating service account key for GitHub Actions..."
 KEY_FILE="/tmp/${SA_NAME}-key.json"
 
 if [ -f "${KEY_FILE}" ]; then
-  echo -e "${YELLOW}⚠️  Key file already exists, removing old key${NC}"
+  echo "Key file already exists, removing old key"
   rm "${KEY_FILE}"
 fi
 
@@ -95,21 +89,21 @@ gcloud iam service-accounts keys create "${KEY_FILE}" \
   --iam-account="${SA_EMAIL}" \
   --project="${PROJECT_ID}"
 
-echo -e "${GREEN}✅ Service account key created: ${KEY_FILE}${NC}"
+echo "Service account key created: ${KEY_FILE}"
 echo ""
 
 # Additional roles for GitHub Actions service account to deploy
-echo "🔐 Assigning deployment roles to service account..."
+echo "Assigning deployment roles to service account..."
 
 DEPLOY_ROLES=(
-  "roles/run.admin"                   # Manage Cloud Run services
-  "roles/iam.serviceAccountUser"      # Act as service account
-  "roles/artifactregistry.writer"     # Push to Artifact Registry
-  "roles/cloudbuild.builds.builder"   # Build images
+  "roles/run.admin"
+  "roles/iam.serviceAccountUser"
+  "roles/artifactregistry.writer"
+  "roles/cloudbuild.builds.builder"
 )
 
 for ROLE in "${DEPLOY_ROLES[@]}"; do
-  echo "  → Assigning ${ROLE}..."
+  echo "  Assigning ${ROLE}..."
   gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${SA_EMAIL}" \
     --role="${ROLE}" \
@@ -117,11 +111,11 @@ for ROLE in "${DEPLOY_ROLES[@]}"; do
     --quiet
 done
 
-echo -e "${GREEN}✅ Deployment roles assigned${NC}"
+echo "Deployment roles assigned"
 echo ""
 
 # Enable required APIs
-echo "🔍 Enabling required GCP APIs..."
+echo "Enabling required GCP APIs..."
 
 APIS=(
   "run.googleapis.com"
@@ -133,37 +127,21 @@ APIS=(
 )
 
 for API in "${APIS[@]}"; do
-  echo "  → Enabling ${API}..."
+  echo "  Enabling ${API}..."
   gcloud services enable "${API}" --project="${PROJECT_ID}"
 done
 
-echo -e "${GREEN}✅ All APIs enabled${NC}"
+echo "All APIs enabled"
 echo ""
 
-# Display key content for GitHub Actions
+# Summary
 echo "================================================================"
-echo "  ✅ Setup Complete!"
+echo "  Setup Complete!"
 echo "================================================================"
-echo ""
-echo "Next steps:"
-echo ""
-echo "1. Add the service account key to GitHub Secrets:"
-echo "   GitHub Repo → Settings → Secrets → New repository secret"
-echo "   Name: GCP_SERVICE_ACCOUNT_KEY"
-echo "   Value: (paste the entire content of the key file)"
-echo ""
-echo "2. Copy the key content:"
-echo "   ${YELLOW}cat ${KEY_FILE}${NC}"
-echo ""
-echo "3. Or use the GitHub CLI:"
-echo "   ${YELLOW}gh secret set GCP_SERVICE_ACCOUNT_KEY < ${KEY_FILE}${NC}"
-echo ""
-echo "4. After adding to GitHub, DELETE the local key file:"
-echo "   ${YELLOW}rm ${KEY_FILE}${NC}"
-echo ""
-echo "5. Setup GCP secrets (if not already done):"
-echo "   ${YELLOW}./.deployment/scripts/gcp/setup-gcp-secrets.sh${NC}"
 echo ""
 echo "Service Account: ${SA_EMAIL}"
 echo "Project: ${PROJECT_ID}"
+echo "Key File: ${KEY_FILE}"
+echo ""
+echo "For next steps, see .deployment/DEPLOYMENT.md (Phase 1, Step 1.3)"
 echo ""

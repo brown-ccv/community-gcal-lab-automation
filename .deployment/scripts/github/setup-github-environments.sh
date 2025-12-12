@@ -4,27 +4,20 @@
 
 set -e
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
 echo "================================================================"
-echo "  🌍 GitHub Environments Setup"
+echo "  GitHub Environments Setup"
 echo "================================================================"
 echo ""
 
 # Check if gh CLI is installed
 if ! command -v gh &> /dev/null; then
-  echo -e "${RED}❌ GitHub CLI (gh) is not installed${NC}"
+  echo "ERROR: GitHub CLI (gh) is not installed"
   exit 1
 fi
 
 # Check if authenticated
 if ! gh auth status &>/dev/null; then
-  echo -e "${RED}❌ Not authenticated with GitHub${NC}"
+  echo "ERROR: Not authenticated with GitHub"
   echo "Please run: gh auth login"
   exit 1
 fi
@@ -42,7 +35,7 @@ create_environment() {
   local ENV_NAME=$1
   local PROTECTION=$2
   
-  echo "🔄 Creating environment: ${ENV_NAME}"
+  echo "Creating environment: ${ENV_NAME}"
   
   # GitHub API call to create environment
   gh api \
@@ -54,12 +47,12 @@ create_environment() {
     -F "reviewers=null" \
     > /dev/null 2>&1 || true
   
-  echo -e "${GREEN}✅ Environment created: ${ENV_NAME}${NC}"
+  echo "Environment created: ${ENV_NAME}"
 }
 
 # Create staging environment (no protection)
 echo "================================================================"
-echo -e "${BLUE}Staging Environment${NC}"
+echo "Staging Environment"
 echo "Description: For testing deployments"
 echo "Protection: None"
 echo "================================================================"
@@ -69,7 +62,7 @@ echo ""
 
 # Create production environment (with protection)
 echo "================================================================"
-echo -e "${BLUE}Production Environment${NC}"
+echo "Production Environment"
 echo "Description: Live production deployment"
 echo "Protection: Recommended (manual approval)"
 echo "================================================================"
@@ -87,14 +80,8 @@ create_environment "production" $PROTECT_PROD
 # Summary
 echo ""
 echo "================================================================"
-echo "  ✅ Environments Created!"
+echo "  Environments Created!"
 echo "================================================================"
 echo ""
-echo "View environments:"
-echo "  https://github.com/${REPO}/settings/environments"
-echo ""
-echo "Configure environment-specific secrets or protection rules in GitHub:"
-echo "  Repository → Settings → Environments → [Environment Name]"
-echo ""
-echo "Environment URLs will be automatically set after first deployment."
+echo "For next steps, see .deployment/DEPLOYMENT.md (Phase 1, Step 1.4)"
 echo ""

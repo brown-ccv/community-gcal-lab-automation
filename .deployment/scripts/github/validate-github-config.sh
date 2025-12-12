@@ -4,26 +4,20 @@
 
 set -e
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
 echo "================================================================"
-echo "  ✅ GitHub Secrets Validation"
+echo "  GitHub Secrets Validation"
 echo "================================================================"
 echo ""
 
 # Check if gh CLI is installed
 if ! command -v gh &> /dev/null; then
-  echo -e "${RED}❌ GitHub CLI (gh) is not installed${NC}"
+  echo "ERROR: GitHub CLI (gh) is not installed"
   exit 1
 fi
 
 # Check if authenticated
 if ! gh auth status &>/dev/null; then
-  echo -e "${RED}❌ Not authenticated with GitHub${NC}"
+  echo "ERROR: Not authenticated with GitHub"
   echo "Please run: gh auth login"
   exit 1
 fi
@@ -37,16 +31,16 @@ echo ""
 REQUIRED_SECRETS=("GCP_SERVICE_ACCOUNT_KEY")
 
 # Validation
-echo "🔍 Checking required secrets..."
+echo "Checking required secrets..."
 echo ""
 
 ALL_VALID=true
 
 for SECRET in "${REQUIRED_SECRETS[@]}"; do
   if gh secret list | grep -q "$SECRET"; then
-    echo -e "${GREEN}✅ ${SECRET}${NC}"
+    echo "✅ ${SECRET}"
   else
-    echo -e "${RED}❌ ${SECRET} - NOT FOUND${NC}"
+    echo "❌ ${SECRET} - NOT FOUND"
     ALL_VALID=false
   fi
 done
@@ -54,17 +48,17 @@ done
 echo ""
 
 if [ "$ALL_VALID" = true ]; then
-  echo -e "${GREEN}================================================================${NC}"
-  echo -e "${GREEN}  ✅ All required secrets are configured!${NC}"
-  echo -e "${GREEN}================================================================${NC}"
+  echo "================================================================"
+  echo "  All required secrets are configured!"
+  echo "================================================================"
   echo ""
   echo "You can now deploy using GitHub Actions."
   echo ""
   exit 0
 else
-  echo -e "${RED}================================================================${NC}"
-  echo -e "${RED}  ❌ Missing required secrets${NC}"
-  echo -e "${RED}================================================================${NC}"
+  echo "================================================================"
+  echo "  Missing required secrets"
+  echo "================================================================"
   echo ""
   echo "Run: ./.deployment/scripts/github/setup-github-secrets.sh"
   echo ""

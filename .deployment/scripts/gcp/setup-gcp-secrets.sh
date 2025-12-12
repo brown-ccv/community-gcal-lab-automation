@@ -5,35 +5,28 @@
 
 set -e
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
 echo "================================================================"
-echo "  🔐 Google Cloud Secret Manager Setup"
+echo "  Google Cloud Secret Manager Setup"
 echo "================================================================"
 echo ""
 
 # Get project ID
-echo "🔍 Detecting GCP project..."
+echo "Detecting GCP project..."
 PROJECT_ID=$(gcloud config get-value project 2>/dev/null)
 
 if [ -z "$PROJECT_ID" ]; then
-  echo -e "${RED}❌ No GCP project configured${NC}"
+  echo "ERROR: No GCP project configured"
   echo "Please run: gcloud config set project YOUR_PROJECT_ID"
   exit 1
 fi
 
-echo -e "${GREEN}✅ Project ID: ${PROJECT_ID}${NC}"
+echo "Project ID: ${PROJECT_ID}"
 echo ""
 
 # Enable Secret Manager API
-echo "🔍 Enabling Secret Manager API..."
+echo "Enabling Secret Manager API..."
 gcloud services enable secretmanager.googleapis.com --project="${PROJECT_ID}"
-echo -e "${GREEN}✅ Secret Manager API enabled${NC}"
+echo "Secret Manager API enabled"
 echo ""
 
 # Function to create or update secret
@@ -44,13 +37,13 @@ create_secret() {
   
   echo ""
   echo "================================================================"
-  echo -e "${BLUE}Secret: ${SECRET_NAME}${NC}"
+  echo "Secret: ${SECRET_NAME}"
   echo "Description: ${SECRET_DESCRIPTION}"
   echo "================================================================"
   
   # Check if secret already exists
   if gcloud secrets describe "${SECRET_NAME}" --project="${PROJECT_ID}" &>/dev/null; then
-    echo -e "${YELLOW}⚠️  Secret already exists${NC}"
+    echo "Secret already exists"
     read -p "Do you want to update it? (y/n) " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -59,31 +52,31 @@ create_secret() {
     fi
   else
     # Create the secret
-    echo "🔄 Creating secret..."
+    echo "Creating secret..."
     gcloud secrets create "${SECRET_NAME}" \
       --replication-policy="automatic" \
       --project="${PROJECT_ID}"
-    echo -e "${GREEN}✅ Secret created${NC}"
+    echo "Secret created"
   fi
   
   # Prompt for secret value
   echo ""
-  echo -e "${YELLOW}${PROMPT_MESSAGE}${NC}"
+  echo "${PROMPT_MESSAGE}"
   read -sp "Enter value (input hidden): " SECRET_VALUE
   echo ""
   
   if [ -z "$SECRET_VALUE" ]; then
-    echo -e "${RED}❌ Empty value, skipping${NC}"
+    echo "ERROR: Empty value, skipping"
     return
   fi
   
   # Add secret version
-  echo "🔄 Adding secret version..."
+  echo "Adding secret version..."
   echo -n "$SECRET_VALUE" | gcloud secrets versions add "${SECRET_NAME}" \
     --data-file=- \
     --project="${PROJECT_ID}"
   
-  echo -e "${GREEN}✅ Secret value set${NC}"
+  echo "Secret value set"
 }
 
 # Main setup
@@ -110,24 +103,24 @@ create_secret \
 # 3. SESSION_SECRET
 echo ""
 echo "================================================================"
-echo -e "${BLUE}Secret: session-secret${NC}"
+echo "Secret: session-secret"
 echo "Description: Random secret for Express session encryption"
 echo "================================================================"
 
 if gcloud secrets describe "session-secret" --project="${PROJECT_ID}" &>/dev/null; then
-  echo -e "${YELLOW}⚠️  Secret already exists${NC}"
+  echo "Secret already exists"
   read -p "Do you want to regenerate it? (y/n) " -n 1 -r
   echo
   if [[ $REPLY =~ ^[Yy]$ ]]; then
     SESSION_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
-    echo "🔄 Adding new secret version..."
+    echo "Adding new secret version..."
     echo -n "$SESSION_SECRET" | gcloud secrets versions add "session-secret" \
       --data-file=- \
       --project="${PROJECT_ID}"
-    echo -e "${GREEN}✅ New session secret generated${NC}"
+    echo "New session secret generated"
   fi
 else
-  echo "🔄 Generating random session secret..."
+  echo "Generating random session secret..."
   gcloud secrets create "session-secret" \
     --replication-policy="automatic" \
     --project="${PROJECT_ID}"
@@ -136,7 +129,7 @@ else
   echo -n "$SESSION_SECRET" | gcloud secrets versions add "session-secret" \
     --data-file=- \
     --project="${PROJECT_ID}"
-  echo -e "${GREEN}✅ Session secret created${NC}"
+  echo "Session secret created"
 fi
 
 # 4. REMINDER_CALENDAR_ID
@@ -154,7 +147,7 @@ create_secret \
 # 6. PRODUCTION_ATTENDEE_EMAIL (optional)
 echo ""
 echo "================================================================"
-echo -e "${BLUE}Secret: production-attendee-email (OPTIONAL)${NC}"
+echo "Secret: production-attendee-email (OPTIONAL)"
 echo "Description: Email to receive calendar invitations"
 echo "================================================================"
 read -p "Do you want to set PRODUCTION_ATTENDEE_EMAIL? (y/n) " -n 1 -r
@@ -169,7 +162,7 @@ fi
 # Grant service account access to secrets
 echo ""
 echo "================================================================"
-echo "🔐 Granting service account access to secrets"
+echo "Granting service account access to secrets"
 echo "================================================================"
 
 SERVICE_NAME="gcal-lab-automation"
@@ -180,7 +173,7 @@ echo ""
 
 # Check if service account exists
 if ! gcloud iam service-accounts describe "${SA_EMAIL}" --project="${PROJECT_ID}" &>/dev/null; then
-  echo -e "${RED}❌ Service account not found: ${SA_EMAIL}${NC}"
+  echo "ERROR: Service account not found: ${SA_EMAIL}"
   echo "Please run .deployment/scripts/gcp/setup-service-account.sh first"
   exit 1
 fi
@@ -190,7 +183,7 @@ SECRETS=("auth-client-id" "auth-client-secret" "session-secret" "reminder-calend
 
 for SECRET in "${SECRETS[@]}"; do
   if gcloud secrets describe "${SECRET}" --project="${PROJECT_ID}" &>/dev/null; then
-    echo "  → Granting access to ${SECRET}..."
+    echo "  Granting access to ${SECRET}..."
     gcloud secrets add-iam-policy-binding "${SECRET}" \
       --member="serviceAccount:${SA_EMAIL}" \
       --role="roles/secretmanager.secretAccessor" \
@@ -201,7 +194,7 @@ done
 
 # Check if production-attendee-email exists and grant access
 if gcloud secrets describe "production-attendee-email" --project="${PROJECT_ID}" &>/dev/null; then
-  echo "  → Granting access to production-attendee-email..."
+  echo "  Granting access to production-attendee-email..."
   gcloud secrets add-iam-policy-binding "production-attendee-email" \
     --member="serviceAccount:${SA_EMAIL}" \
     --role="roles/secretmanager.secretAccessor" \
@@ -209,23 +202,15 @@ if gcloud secrets describe "production-attendee-email" --project="${PROJECT_ID}"
     --quiet
 fi
 
-echo -e "${GREEN}✅ All permissions granted${NC}"
+echo "All permissions granted"
 
 # Summary
 echo ""
 echo "================================================================"
-echo "  ✅ Setup Complete!"
+echo "  Setup Complete!"
 echo "================================================================"
 echo ""
 echo "Secrets configured in project: ${PROJECT_ID}"
 echo ""
-echo "List all secrets:"
-echo "  ${YELLOW}gcloud secrets list --project=${PROJECT_ID}${NC}"
-echo ""
-echo "View secret metadata:"
-echo "  ${YELLOW}gcloud secrets describe SECRET_NAME --project=${PROJECT_ID}${NC}"
-echo ""
-echo "Next steps:"
-echo "1. Configure OAuth redirect URIs in Google Cloud Console"
-echo "2. Deploy to Cloud Run using GitHub Actions or gcloud"
+echo "For next steps, see .deployment/DEPLOYMENT.md (Phase 1, Step 1.3)"
 echo ""
