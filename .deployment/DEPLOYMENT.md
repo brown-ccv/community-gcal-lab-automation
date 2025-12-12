@@ -519,7 +519,7 @@ gcloud run deploy gcal-lab-automation \
   --timeout=300 \
   --min-instances=0 \
   --max-instances=10 \
-  --set-env-vars="NODE_ENV=production,PORT=8080,DEMO_MODE=false,BYPASS_AUTH=false,ALLOWED_DOMAIN=brown.edu" \
+  --set-env-vars="NODE_ENV=production,DEMO_MODE=false,BYPASS_AUTH=false,ALLOWED_DOMAIN=brown.edu" \
   --set-secrets="AUTH_CLIENT_ID=auth-client-id:latest,AUTH_CLIENT_SECRET=auth-client-secret:latest,SESSION_SECRET=session-secret:latest,REMINDER_CALENDAR_ID=reminder-calendar-id:latest,RETENTION_CALENDAR_ID=retention-calendar-id:latest" \
   --project=${PROJECT_ID} \
   --quiet
@@ -535,6 +535,8 @@ gcloud run deploy gcal-lab-automation \
 - `--max-instances=10`: Maximum concurrent instances
 - `--set-env-vars`: Non-sensitive configuration
 - `--set-secrets`: Reference secrets from Secret Manager
+
+**Note**: Cloud Run automatically sets the `PORT` environment variable (usually 8080). Do NOT set it manually in `--set-env-vars` as it's a reserved variable.
 
 #### Step 2.5: Get Service URL
 
@@ -704,7 +706,7 @@ gcloud run deploy ${SERVICE_NAME} \
   --timeout=300 \
   --min-instances=0 \
   --max-instances=10 \
-  --set-env-vars="NODE_ENV=production,PORT=8080,DEMO_MODE=false,BYPASS_AUTH=false,ALLOWED_DOMAIN=brown.edu" \
+  --set-env-vars="NODE_ENV=production,DEMO_MODE=false,BYPASS_AUTH=false,ALLOWED_DOMAIN=brown.edu" \
   --set-secrets="AUTH_CLIENT_ID=auth-client-id:latest,AUTH_CLIENT_SECRET=auth-client-secret:latest,SESSION_SECRET=session-secret:latest,REMINDER_CALENDAR_ID=reminder-calendar-id:latest,RETENTION_CALENDAR_ID=retention-calendar-id:latest" \
   --project=${PROJECT_ID} \
   --quiet
@@ -760,9 +762,9 @@ gcloud projects get-iam-policy ${PROJECT_ID} \
 gcloud run logs read --service=gcal-lab-automation --region=us-east1
 
 # Common causes:
-# - PORT environment variable not set correctly
 # - Application crashed on startup
 # - Missing required secrets
+# - PORT binding issues (Cloud Run automatically sets PORT env var)
 
 # Verify secrets exist
 gcloud secrets list --project=${PROJECT_ID}

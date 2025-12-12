@@ -196,7 +196,6 @@ jobs:
             --max-instances=10
           env_vars: |
             NODE_ENV=production
-            PORT=8080
             DEMO_MODE=false
             BYPASS_AUTH=false
             ALLOWED_DOMAIN=brown.edu
