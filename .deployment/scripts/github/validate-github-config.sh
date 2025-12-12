@@ -19,6 +19,7 @@ fi
 if ! gh auth status &>/dev/null; then
   echo "ERROR: Not authenticated with GitHub"
   echo "Please run: gh auth login"
+  echo "Required scopes: repo, workflow, admin:org, admin:repo_hook"
   exit 1
 fi
 
@@ -56,6 +57,29 @@ fi
 
 echo ""
 echo "Validating secrets for: ${REPO}"
+echo ""
+
+# Verify access to secrets API
+echo "Verifying permissions..."
+if ! gh api "repos/${REPO}/actions/secrets/public-key" &>/dev/null; then
+  echo ""
+  echo "================================================================"
+  echo "  ERROR: Cannot access repository secrets"
+  echo "================================================================"
+  echo ""
+  echo "You need additional GitHub CLI permissions."
+  echo ""
+  echo "Fix this by running:"
+  echo "  gh auth refresh -s admin:org,repo,workflow,admin:repo_hook"
+  echo ""
+  echo "Or re-authenticate:"
+  echo "  gh auth logout"
+  echo "  gh auth login"
+  echo ""
+  exit 1
+fi
+
+echo "Permissions verified"
 echo ""
 
 # Required secrets

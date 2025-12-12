@@ -104,7 +104,19 @@ This application is deployed to **Google Cloud Run**, a fully managed serverless
    - HTTPS
    - Login with web browser
    
-   Required scopes: `repo`, `workflow`, `admin:repo_hook`
+   **Required scopes**: `repo`, `workflow`, `admin:repo_hook`
+   
+   **Important**: If you've already authenticated but get "HTTP 403: Resource not accessible by integration" errors when running setup scripts, you need to refresh your authentication with the required scopes:
+   ```bash
+   gh auth refresh -s admin:org,repo,workflow,admin:repo_hook
+   ```
+   
+   Or re-authenticate completely:
+   ```bash
+   gh auth logout
+   gh auth login
+   # Then select: repo, workflow, admin:org, admin:repo_hook scopes
+   ```
 
 2. **Fork/Clone Repository**
    
