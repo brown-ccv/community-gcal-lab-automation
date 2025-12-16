@@ -193,7 +193,7 @@ jobs:
             --memory=512Mi
             --timeout=300
             --min-instances=0
-            --max-instances=10
+            --max-instances=1
           env_vars: |
             NODE_ENV=production
             DEMO_MODE=false
