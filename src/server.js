@@ -1,6 +1,4 @@
 import express from 'express';
-import session from 'express-session';
-import passport from 'passport';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { google } from 'googleapis';
@@ -9,8 +7,6 @@ import multer from 'multer';
 import dotenv from 'dotenv';
 import { createEvents, deleteEvents, deleteAllDemoEvents, createEventsFromCSV, deleteRecentEvents } from './calendar.js';
 import { parseCSVFromBuffer, getEventSummary } from './csvParser.js';
-import { requireAuth, isAuthBypassed } from './middleware/auth.js';
-import { configurePassport, createAuthRoutes } from './routes/auth.js';
 
 // Load environment variables
 dotenv.config();
@@ -21,7 +17,6 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DEMO_MODE = process.env.DEMO_MODE === 'true';
-const BYPASS_AUTH = process.env.BYPASS_AUTH === 'true';
 
 // Configuration
 const SCOPES = ['https://www.googleapis.com/auth/calendar'];
@@ -34,60 +29,12 @@ const REDIRECT_URI = process.env.REDIRECT_URI || 'http://localhost:3000/oauth2ca
 
 console.log('Using credentials from:', CREDENTIALS_PATH);
 console.log('Demo mode:', DEMO_MODE ? 'ENABLED (no real API calls)' : 'DISABLED (real calendar events)');
-console.log('Auth bypass:', BYPASS_AUTH ? 'ENABLED (no authentication required)' : 'DISABLED (authentication required)');
-
-// Session configuration
-const SESSION_SECRET = process.env.SESSION_SECRET || 'your-secret-key-change-this-in-production';
-if (!process.env.SESSION_SECRET) {
-  console.warn('⚠️  SESSION_SECRET not set. Using default (not secure for production)');
-}
-
-app.use(session({
-  secret: SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: process.env.NODE_ENV === 'production', // HTTPS only in production
-    httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
-  },
-}));
-
-// Initialize Passport
-app.use(passport.initialize());
-app.use(passport.session());
-configurePassport();
 
 // Middleware
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// Serve static files with conditional access
-// Allow public access to login page, auth assets, and styles
-app.use((req, res, next) => {
-  // Public files that don't require authentication
-  const publicFiles = ['/login.html', '/styles.css'];
-  const isPublic = publicFiles.some(file => req.path === file) || 
-                   req.path.startsWith('/auth/');
-  
-  if (isPublic || isAuthBypassed()) {
-    return next();
-  }
-  
-  // For protected static files, check authentication
-  if (req.isAuthenticated()) {
-    return next();
-  }
-  
-  // Not authenticated and trying to access protected file
-  // Redirect to login if it's an HTML file, otherwise block
-  if (req.path.endsWith('.html') || req.path === '/') {
-    return res.redirect('/login.html');
-  }
-  
-  return res.status(401).send('Unauthorized');
-});
-
+// Serve static files
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Configure multer for file uploads
@@ -141,9 +88,6 @@ function getAuthorizedClient() {
   return client;
 }
 
-// Authentication routes
-createAuthRoutes(app);
-
 // Routes
 
 // API endpoint to check demo mode
@@ -151,8 +95,8 @@ app.get('/api/demo-mode', (req, res) => {
   res.json({ demoMode: DEMO_MODE });
 });
 
-// Home page - main form (PROTECTED)
-app.get('/', requireAuth, (req, res) => {
+// Home page - main form
+app.get('/', (req, res) => {
   // Check if credentials.json exists (for calendar API, not user auth)
   if (!DEMO_MODE && !fs.existsSync(CREDENTIALS_PATH)) {
     return res.sendFile(path.join(__dirname, '..', 'public', 'setup-required.html'));
@@ -252,8 +196,8 @@ app.get('/oauth2callback', async (req, res) => {
   }
 });
 
-// Create events endpoint (PROTECTED)
-app.post('/create-events', requireAuth, async (req, res) => {
+// Create events endpoint
+app.post('/create-events', async (req, res) => {
   if (!DEMO_MODE && !isAuthorized()) {
     return res.redirect('/authorize');
   }
@@ -290,8 +234,8 @@ app.post('/create-events', requireAuth, async (req, res) => {
   }
 });
 
-// Delete events endpoint (PROTECTED)
-app.post('/delete-events', requireAuth, async (req, res) => {
+// Delete events endpoint
+app.post('/delete-events', async (req, res) => {
   if (!DEMO_MODE && !isAuthorized()) {
     return res.redirect('/authorize');
   }
@@ -324,8 +268,8 @@ app.post('/delete-events', requireAuth, async (req, res) => {
   }
 });
 
-// Clear all demo events endpoint (PROTECTED)
-app.post('/clear-demo-events', requireAuth, async (req, res) => {
+// Clear all demo events endpoint
+app.post('/clear-demo-events', async (req, res) => {
   if (!DEMO_MODE && !isAuthorized()) {
     return res.redirect('/authorize');
   }
@@ -348,8 +292,8 @@ app.post('/clear-demo-events', requireAuth, async (req, res) => {
   }
 });
 
-// CSV Import - Preview endpoint (PROTECTED)
-app.post('/api/csv/preview', requireAuth, upload.single('csvFile'), (req, res) => {
+// CSV Import - Preview endpoint
+app.post('/api/csv/preview', upload.single('csvFile'), (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -370,8 +314,8 @@ app.post('/api/csv/preview', requireAuth, upload.single('csvFile'), (req, res) =
   }
 });
 
-// CSV Import - Create events endpoint (PROTECTED)
-app.post('/api/csv/import', requireAuth, upload.single('csvFile'), async (req, res) => {
+// CSV Import - Create events endpoint
+app.post('/api/csv/import', upload.single('csvFile'), async (req, res) => {
   try {
     if (DEMO_MODE) {
       // Demo mode: simulate import
@@ -431,8 +375,8 @@ app.post('/api/csv/import', requireAuth, upload.single('csvFile'), async (req, r
   }
 });
 
-// Delete recent events (debugging tool) (PROTECTED)
-app.post('/api/delete-recent', requireAuth, async (req, res) => {
+// Delete recent events (debugging tool)
+app.post('/api/delete-recent', async (req, res) => {
   try {
     if (DEMO_MODE) {
       return res.json({

@@ -2,25 +2,6 @@
 let IS_DEMO_MODE = false;
 let currentPreviewData = null;
 
-// Check authentication status and show user info
-(async function checkAuthStatus() {
-  try {
-    const response = await fetch('/api/auth/status');
-    const data = await response.json();
-    
-    if (data.authenticated) {
-      const userInfo = document.getElementById('user-info');
-      const userEmail = document.getElementById('user-email');
-      if (userInfo && userEmail) {
-        userEmail.textContent = data.user.email;
-        userInfo.style.display = 'block';
-      }
-    }
-  } catch (error) {
-    console.log('Auth check failed (may be in bypass mode):', error);
-  }
-})();
-
 // Helper function to check if a date falls on weekend
 function isWeekendDate(dateStr) {
   const [month, day, year] = dateStr.split('/').map(s => parseInt(s.trim(), 10));

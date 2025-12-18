@@ -39,25 +39,6 @@ function shiftWeekendToFriday(dateStr) {
   return { adjustedDate, wasShifted, originalDate };
 }
 
-// Check authentication status and show user info
-(async function checkAuthStatus() {
-  try {
-    const response = await fetch('/api/auth/status');
-    const data = await response.json();
-    
-    if (data.authenticated) {
-      const userInfo = document.getElementById('user-info');
-      const userEmail = document.getElementById('user-email');
-      if (userInfo && userEmail) {
-        userEmail.textContent = data.user.email;
-        userInfo.style.display = 'block';
-      }
-    }
-  } catch (error) {
-    console.log('Auth check failed (may be in bypass mode):', error);
-  }
-})();
-
 // Check demo mode status on page load
 (async function checkDemoMode() {
   try {
