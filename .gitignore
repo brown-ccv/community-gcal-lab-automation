@@ -25,3 +25,9 @@ npm-debug.log*
 
 # Render
 .render/
+
+# Deployment artifacts
+*.key.json
+*-key.json
+docker-build.log
+deploy.log

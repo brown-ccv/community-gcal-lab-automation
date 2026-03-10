@@ -139,21 +139,41 @@ Each created event includes:
 ### Local Use
 The web interface runs on http://localhost:3000 by default. Perfect for single-computer lab use.
 
-### Cloud Deployment (Render.com)
-To make the tool accessible from anywhere:
+### Cloud Deployment (Google Cloud Run)
+**Deploy to production on Google Cloud Run** - fully managed, auto-scaling, pay-per-use serverless platform.
 
-1. See `docs/DEPLOYMENT_PLAN.md` for complete rollout plan
-2. Follow Phase 2 instructions for Render.com deployment
-3. Free tier supports unlimited users for lab use
+📚 **[Complete Deployment Guide](.deployment/DEPLOYMENT.md)** - Step-by-step instructions for deploying to Google Cloud Run.
 
-**Cost:** $0/month on Render.com free tier
+**Key Features:**
+- ✅ **$0/month** for typical lab usage (free tier)
+- ✅ **Auto-scaling** from 0 to 10 instances based on traffic
+- ✅ **HTTPS included** with automatic SSL certificates
+- ✅ **GitHub Actions CI/CD** with automated deployment
+- ✅ **Secure secrets** via Google Cloud Secret Manager
+- ✅ **5-minute deployment** from code to production
+
+**Quick Start:**
+```bash
+# 1. Setup GCP infrastructure
+./.deployment/scripts/gcp/setup-service-account.sh
+./.deployment/scripts/gcp/setup-gcp-secrets.sh
+
+# 2. Setup GitHub Actions
+./.deployment/scripts/github/setup-github-secrets.sh
+
+# 3. Deploy via GitHub Actions
+# Go to: Actions → "Deploy to Google Cloud Run" → Run workflow
+```
+
+**Region:** `us-east1` (closest to Providence, RI) - required by Brown University GCP org policy.
 
 ## Documentation
 
-All documentation is in the `docs/` folder:
+All documentation is in the respective folders:
+- **`.deployment/DEPLOYMENT.md`** - Complete cloud deployment guide (Google Cloud Run)
 - `docs/WEB_USER_GUIDE.md` - Simple guide for lab members
 - `docs/SETUP_GUIDE.md` - Google Calendar API setup (detailed)
-- `docs/DEPLOYMENT_PLAN.md` - Complete cloud deployment plan
+- `docs/setup/DEPLOYMENT_PLAN.md` - Original Render.com deployment plan (archived)
 - `docs/CUSTOMIZATION.md` - How to modify intervals, times, etc.
 - `docs/PHASE1_COMPLETE.md` - Phase 1 summary and next steps
 - `docs/design-qs.md` - Design decisions and requirements
