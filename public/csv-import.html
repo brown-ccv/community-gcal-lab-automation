@@ -7,23 +7,23 @@
   <link rel="stylesheet" href="/styles.css">
   <style>
     .upload-area {
-      border: 2px dashed #6366f1;
+      border: 2px dashed #2f86d9;
       border-radius: 8px;
       padding: 40px;
       text-align: center;
-      background: #f8f9ff;
+      background: #f4f9ff;
       cursor: pointer;
       transition: all 0.3s ease;
     }
     
     .upload-area:hover {
-      background: #f0f1ff;
-      border-color: #4f46e5;
+      background: #eaf4ff;
+      border-color: #1f6cb5;
     }
     
     .upload-area.dragover {
-      background: #e0e7ff;
-      border-color: #4f46e5;
+      background: #dcecff;
+      border-color: #1f6cb5;
     }
     
     .file-input {
@@ -65,7 +65,7 @@
     .stat-value {
       font-size: 32px;
       font-weight: bold;
-      color: #6366f1;
+      color: #1f6cb5;
     }
     
     .stat-label {
@@ -96,7 +96,7 @@
     .sample-event {
       padding: 12px;
       background: white;
-      border-left: 4px solid #6366f1;
+      border-left: 4px solid #2f86d9;
       margin-bottom: 8px;
       border-radius: 4px;
     }
@@ -120,7 +120,7 @@
     }
     
     .nav-links a {
-      color: #6366f1;
+      color: #1f6cb5;
       text-decoration: none;
       margin-right: 16px;
     }
@@ -132,19 +132,27 @@
 </head>
 <body>
   <div class="container">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-      <button onclick="window.location.href='/'" class="btn btn-secondary">
-        ← Back to Manual Entry
-      </button>
-      <div id="user-info" style="display: none; align-items: center; gap: 10px;">
-        <div style="background: #f0f0f0; padding: 6px 12px; border-radius: 20px; font-size: 13px; color: #333;">
-          <span id="user-email"></span>
-        </div>
-        <a href="/auth/logout" style="font-size: 13px; color: #666; text-decoration: none; padding: 6px 12px; border: 1px solid #ddd; border-radius: 6px; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">
-          Logout
-        </a>
+    <header class="topbar" style="margin-bottom: 16px;">
+      <div class="brand-block">
+        <p class="eyebrow">Lab Operations</p>
+        <h1>Calendar Follow-Up Scheduler</h1>
+        <p class="subtitle">Bulk import participant schedules from CSV.</p>
       </div>
-    </div>
+
+      <div class="topbar-actions">
+        <div class="view-switch" role="tablist" aria-label="Scheduler mode">
+          <a class="view-switch-item" href="/index.html" role="tab" aria-selected="false">Single Entry</a>
+          <a class="view-switch-item is-active" href="/csv-import.html" role="tab" aria-selected="true">CSV Import</a>
+        </div>
+
+        <div id="user-info" class="user-info" style="display: none;">
+          <div class="user-pill">
+            <span id="user-email"></span>
+          </div>
+          <a href="/auth/logout" class="logout-link">Logout</a>
+        </div>
+      </div>
+    </header>
     
     <div id="mode-banner" style="margin-bottom: 1.5rem; padding: 1rem; border-radius: 8px;"></div>
     
@@ -153,14 +161,14 @@
       <p>Upload a FileMaker export CSV to create calendar events in bulk</p>
       
       <div class="upload-area" id="uploadArea">
-        <div class="upload-icon">File</div>
+        <div class="upload-icon">Upload</div>
         <h3>Click to upload or drag and drop</h3>
         <p>CSV files only (max 5MB)</p>
         <input type="file" id="fileInput" class="file-input" accept=".csv" />
       </div>
       
       <div class="preview-section" id="previewSection">
-        <h2>📋 Import Preview</h2>
+        <h2>Import Preview</h2>
         
         <div class="summary-card">
           <h3>Summary</h3>

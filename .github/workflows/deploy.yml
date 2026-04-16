@@ -48,6 +48,17 @@ jobs:
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
+
+      - name: 🟢 Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: 🧪 Run test gate
+        run: |
+          npm ci
+          npm test
         
       - name: 🔐 Authenticate to Google Cloud
         id: auth
@@ -103,7 +114,7 @@ jobs:
           # These secrets should exist in GCP Secret Manager
           PROJECT_ID=$(gcloud config get-value project)
           
-          SECRETS=("auth-client-id" "auth-client-secret" "session-secret" "reminder-calendar-id" "retention-calendar-id")
+          SECRETS=("auth-client-id" "auth-client-secret" "session-secret" "reminder-calendar-id" "retention-calendar-id" "required-google-group" "google-admin-user-email" "google-admin-sa-json")
           
           for SECRET in "${SECRETS[@]}"; do
             if gcloud secrets describe "${SECRET}" --project="${PROJECT_ID}" &>/dev/null; then
@@ -199,12 +210,16 @@ jobs:
             DEMO_MODE=false
             BYPASS_AUTH=false
             ALLOWED_DOMAIN=brown.edu
+            REQUIRE_GROUP_MEMBERSHIP=true
           secrets: |
             AUTH_CLIENT_ID=auth-client-id:latest
             AUTH_CLIENT_SECRET=auth-client-secret:latest
             SESSION_SECRET=session-secret:latest
             REMINDER_CALENDAR_ID=reminder-calendar-id:latest
             RETENTION_CALENDAR_ID=retention-calendar-id:latest
+            REQUIRED_GOOGLE_GROUP=required-google-group:latest
+            GOOGLE_ADMIN_USER_EMAIL=google-admin-user-email:latest
+            GOOGLE_ADMIN_SERVICE_ACCOUNT_JSON=google-admin-sa-json:latest
       
       - name: 🔗 Set AUTH_CALLBACK_URL
         run: |
@@ -216,6 +231,11 @@ jobs:
             --update-env-vars=AUTH_CALLBACK_URL="${SERVICE_URL}/auth/google/callback"
           
           echo "✅ AUTH_CALLBACK_URL configured"
+
+      - name: 🟢 Set up Node.js for smoke checks
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
           
       - name: 🏥 Health check
         if: success()
@@ -245,6 +265,13 @@ jobs:
           
           echo "❌ Health check failed after ${MAX_RETRIES} retries"
           exit 1
+
+      - name: 🔐 Auth smoke checks
+        if: success()
+        env:
+          SERVICE_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          node scripts/verify-deployment.mjs
           
       - name: 📊 Deployment summary
         if: always()

@@ -39,7 +39,31 @@ ALLOWED_DOMAIN=brown.edu
 
 # Callback URL (use localhost for development)
 AUTH_CALLBACK_URL=http://localhost:3000/auth/google/callback
+
+# Optional strict group enforcement
+# Turn on to require explicit membership for all protected routes
+REQUIRE_GROUP_MEMBERSHIP=false
+# Preferred production path: verify users against a Google Group
+REQUIRED_GOOGLE_GROUP=carelab-group@brown.edu
+# Delegated Workspace admin account used for Directory API lookups
+GOOGLE_ADMIN_USER_EMAIL=admin-user@brown.edu
+# Service account JSON string with domain-wide delegation
+GOOGLE_ADMIN_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
+# Optional local fallback allowlist
+ALLOWED_GROUP_MEMBERS=
 ```
+
+### Group Enforcement Notes
+
+- When `REQUIRE_GROUP_MEMBERSHIP=true`, all protected routes require the user email to be listed in `ALLOWED_GROUP_MEMBERS`.
+- When `REQUIRE_GROUP_MEMBERSHIP=true`, the app first checks `REQUIRED_GOOGLE_GROUP` via Google Directory API.
+- If Directory API is not configured, the app falls back to `ALLOWED_GROUP_MEMBERS` (useful for local/staging bring-up).
+- Requests authenticated through IAP headers are accepted and evaluated using the same group check.
+- Recommended rollout: enable in staging first, validate access, then enable in production.
+- For Cloud Run deployment, store these in Secret Manager and map to runtime env:
+   - `required-google-group`
+   - `google-admin-user-email`
+   - `google-admin-sa-json`
 
 ### Generate Session Secret
 

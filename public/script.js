@@ -2,6 +2,242 @@
 
 // Global demo mode flag - will be set on page load
 let IS_DEMO_MODE = true;
+let currentCsvPreviewData = null;
+
+function setSchedulerMode(mode, updateUrl = true) {
+  const isCsv = mode === 'csv';
+  const manualPanel = document.getElementById('step1-manual-panel');
+  const csvPanel = document.getElementById('step1-csv-panel');
+  const manualSwitch = document.getElementById('switch-manual');
+  const csvSwitch = document.getElementById('switch-csv');
+  const step1Title = document.getElementById('step1-title');
+  const step1Help = document.getElementById('step1-help');
+
+  if (manualPanel) {
+    manualPanel.style.display = isCsv ? 'none' : 'block';
+  }
+  if (csvPanel) {
+    csvPanel.style.display = isCsv ? 'block' : 'none';
+  }
+
+  if (manualSwitch) {
+    manualSwitch.classList.toggle('is-active', !isCsv);
+    manualSwitch.setAttribute('aria-selected', String(!isCsv));
+  }
+  if (csvSwitch) {
+    csvSwitch.classList.toggle('is-active', isCsv);
+    csvSwitch.setAttribute('aria-selected', String(isCsv));
+  }
+
+  if (step1Title) {
+    step1Title.textContent = isCsv ? 'Step 1: Import CSV Schedule' : 'Step 1: Create Check-In Events';
+  }
+  if (step1Help) {
+    step1Help.textContent = isCsv
+      ? 'Upload a FileMaker CSV and preview all events before creating them.'
+      : 'This creates 1-day, 10-day, and 45-day follow-up events from one base date.';
+  }
+
+  if (updateUrl) {
+    const nextUrl = isCsv ? '/?mode=csv' : '/?mode=manual';
+    window.history.replaceState({}, '', nextUrl);
+  }
+}
+
+function initializeSchedulerModeSwitch() {
+  const manualSwitch = document.getElementById('switch-manual');
+  const csvSwitch = document.getElementById('switch-csv');
+  if (!manualSwitch || !csvSwitch) {
+    return;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const initialMode = params.get('mode') === 'manual' ? 'manual' : 'csv';
+  setSchedulerMode(initialMode, false);
+
+  manualSwitch.addEventListener('click', () => setSchedulerMode('manual'));
+  csvSwitch.addEventListener('click', () => setSchedulerMode('csv'));
+}
+
+function renderCsvPreview(preview) {
+  const previewSection = document.getElementById('csv-preview-section');
+  const totalParticipants = document.getElementById('csv-total-participants');
+  const totalEvents = document.getElementById('csv-total-events');
+  const eventTypesList = document.getElementById('csv-event-types-list');
+  const sampleEvents = document.getElementById('csv-sample-events');
+
+  if (!previewSection || !totalParticipants || !totalEvents || !eventTypesList || !sampleEvents) {
+    return;
+  }
+
+  totalParticipants.textContent = String(preview.summary.totalParticipants);
+  totalEvents.textContent = String(preview.summary.totalEvents);
+
+  eventTypesList.innerHTML = '';
+  for (const [eventType, count] of Object.entries(preview.summary.eventsByType || {})) {
+    const row = document.createElement('div');
+    row.className = 'csv-event-type-item';
+    row.innerHTML = `<span>${eventType}</span><strong>${count}</strong>`;
+    eventTypesList.appendChild(row);
+  }
+
+  sampleEvents.innerHTML = '';
+  (preview.sampleEvents || []).forEach((event) => {
+    const card = document.createElement('div');
+    card.className = 'csv-sample-event';
+    card.innerHTML = `
+      <div class="csv-sample-event-title">${event.title}</div>
+      <div class="csv-sample-event-meta">Participant: ${event.participantId} | Date: ${event.date}</div>
+    `;
+    sampleEvents.appendChild(card);
+  });
+
+  previewSection.style.display = 'block';
+}
+
+function resetCsvPreview() {
+  const previewSection = document.getElementById('csv-preview-section');
+  const fileInput = document.getElementById('csv-file-input');
+  if (previewSection) {
+    previewSection.style.display = 'none';
+  }
+  if (fileInput) {
+    fileInput.value = '';
+  }
+  currentCsvPreviewData = null;
+}
+
+async function parseCsvFile(file) {
+  if (!file || !file.name.toLowerCase().endsWith('.csv')) {
+    showAlert('Please upload a valid CSV file.', 'error');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('csvFile', file);
+
+  try {
+    showAlert('Parsing CSV file...', 'info');
+    const response = await fetch('/api/csv/preview', {
+      method: 'POST',
+      body: formData,
+      redirect: 'manual',
+    });
+
+    if (response.type === 'opaqueredirect' || response.status === 302) {
+      window.location.href = '/login.html';
+      return;
+    }
+
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || 'Failed to preview CSV');
+    }
+
+    currentCsvPreviewData = { file, payload };
+    renderCsvPreview(payload);
+    showAlert('CSV preview ready. Review sample events before creating.', 'success');
+  } catch (error) {
+    showAlert(`Error: ${error.message}`, 'error');
+  }
+}
+
+async function importCsvFromStep1() {
+  if (!currentCsvPreviewData) {
+    showAlert('Upload and preview a CSV file first.', 'error');
+    return;
+  }
+
+  const importBtn = document.getElementById('csv-import-btn');
+  const originalText = importBtn ? importBtn.textContent : 'Create Events';
+  if (importBtn) {
+    importBtn.disabled = true;
+    importBtn.innerHTML = '<span class="loading-spinner"></span>Creating events...';
+  }
+
+  try {
+    const formData = new FormData();
+    formData.append('csvFile', currentCsvPreviewData.file);
+
+    const csvDemoMode = document.getElementById('csv-demo-mode');
+    formData.append('demoMode', csvDemoMode?.checked ? 'true' : 'false');
+
+    const response = await fetch('/api/csv/import', {
+      method: 'POST',
+      body: formData,
+      redirect: 'manual',
+    });
+
+    if (response.type === 'opaqueredirect' || response.status === 302) {
+      window.location.href = '/login.html';
+      return;
+    }
+
+    const payload = await response.json();
+    if (!response.ok || !payload.success) {
+      throw new Error(payload.error || 'Failed to import CSV');
+    }
+
+    if (payload.demo) {
+      showAlert(payload.message || 'Demo import completed.', 'success', true);
+    } else {
+      const created = payload.results?.created ?? 0;
+      const skipped = payload.results?.skipped ?? 0;
+      const errors = payload.results?.errors ?? 0;
+      showAlert(`CSV import complete. Created: ${created}, Skipped: ${skipped}, Errors: ${errors}`, errors > 0 ? 'error' : 'success', true);
+    }
+
+    resetCsvPreview();
+  } catch (error) {
+    showAlert(`Error: ${error.message}`, 'error');
+  } finally {
+    if (importBtn) {
+      importBtn.disabled = false;
+      importBtn.textContent = originalText;
+    }
+  }
+}
+
+function initializeInlineCsvFlow() {
+  const uploadArea = document.getElementById('csv-upload-area');
+  const fileInput = document.getElementById('csv-file-input');
+  const cancelBtn = document.getElementById('csv-cancel-btn');
+  const importBtn = document.getElementById('csv-import-btn');
+
+  if (!uploadArea || !fileInput || !cancelBtn || !importBtn) {
+    return;
+  }
+
+  uploadArea.addEventListener('click', () => fileInput.click());
+
+  uploadArea.addEventListener('dragover', (event) => {
+    event.preventDefault();
+    uploadArea.classList.add('dragover');
+  });
+
+  uploadArea.addEventListener('dragleave', () => {
+    uploadArea.classList.remove('dragover');
+  });
+
+  uploadArea.addEventListener('drop', (event) => {
+    event.preventDefault();
+    uploadArea.classList.remove('dragover');
+    const file = event.dataTransfer.files?.[0];
+    if (file) {
+      parseCsvFile(file);
+    }
+  });
+
+  fileInput.addEventListener('change', (event) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      parseCsvFile(file);
+    }
+  });
+
+  cancelBtn.addEventListener('click', resetCsvPreview);
+  importBtn.addEventListener('click', importCsvFromStep1);
+}
 
 // Helper function to check if a date falls on weekend
 function isWeekend(dateStr) {
@@ -73,7 +309,7 @@ function shiftWeekendToFriday(dateStr) {
         banner.style.backgroundColor = '#e3f2fd';
         banner.style.borderLeft = '4px solid #2196f3';
         banner.innerHTML = `
-          <strong>🧪 Demo Mode</strong>
+          <strong>Demo Mode</strong>
           <p style="margin: 0.5rem 0 0 0;">
             Events will be simulated. No actual calendar modifications will be made.
           </p>
@@ -82,7 +318,7 @@ function shiftWeekendToFriday(dateStr) {
         banner.style.backgroundColor = '#e8f5e9';
         banner.style.borderLeft = '4px solid #4caf50';
         banner.innerHTML = `
-          <strong>✅ Live Mode</strong>
+          <strong>Live Mode</strong>
           <p style="margin: 0.5rem 0 0 0;">
             Connected to Google Calendar API. Events created here will be <strong>real calendar invites</strong> sent to participants.
           </p>
@@ -430,7 +666,7 @@ document.getElementById('delete-form')?.addEventListener('submit', async (e) => 
     
   } catch (error) {
     console.error('Error:', error);
-    showAlert(`❌ Error: ${error.message}`, 'error');
+    showAlert(`Error: ${error.message}`, 'error');
   } finally {
     deleteBtn.disabled = false;
     deleteBtn.textContent = originalText;
@@ -443,7 +679,7 @@ document.getElementById('clear-demo-btn')?.addEventListener('click', async () =>
   const originalText = clearBtn.textContent;
   
   // Confirm action
-  if (!confirm('⚠️ Are you sure you want to delete ALL demo mode events?\n\nThis will permanently remove all events that were created with "Demo Mode" enabled.\n\nThis action cannot be undone.')) {
+  if (!confirm('Are you sure you want to delete ALL demo mode events?\n\nThis will permanently remove all events that were created with "Demo Mode" enabled.\n\nThis action cannot be undone.')) {
     return;
   }
   
@@ -582,7 +818,7 @@ document.getElementById('delete-recent-btn').addEventListener('click', async fun
         console.error('Error details:', results.errorDetails);
       }
       
-      showAlert(message, errors > 0 ? 'error' : 'success', true); // Persist
+      showAlert(message, results.errors > 0 ? 'error' : 'success', true); // Persist
     }
     
   } catch (error) {
@@ -601,6 +837,9 @@ if (urlParams.get('authorized') === 'true') {
   // Clean up URL
   window.history.replaceState({}, document.title, window.location.pathname);
 }
+
+initializeSchedulerModeSwitch();
+initializeInlineCsvFlow();
 
 // Generate report for manual entry
 function generateManualEntryReport(reportData, projectTitle) {

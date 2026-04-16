@@ -7,6 +7,14 @@ import { verifyDomain } from '../middleware/auth.js';
 const AUTH_CLIENT_ID = process.env.AUTH_CLIENT_ID;
 const AUTH_CLIENT_SECRET = process.env.AUTH_CLIENT_SECRET;
 const AUTH_CALLBACK_URL = process.env.AUTH_CALLBACK_URL || 'http://localhost:3000/auth/google/callback';
+let isGoogleStrategyConfigured = false;
+
+function requireGoogleStrategy(req, res, next) {
+  if (!isGoogleStrategyConfigured) {
+    return res.redirect('/login.html?error=auth_not_configured');
+  }
+  return next();
+}
 
 /**
  * Configure Passport with Google OAuth strategy
@@ -16,6 +24,7 @@ export function configurePassport() {
   if (!AUTH_CLIENT_ID || !AUTH_CLIENT_SECRET) {
     console.warn('⚠️  AUTH_CLIENT_ID and AUTH_CLIENT_SECRET not set. Authentication will not work.');
     console.warn('   Set BYPASS_AUTH=true for development without authentication.');
+    isGoogleStrategyConfigured = false;
     return;
   }
 
@@ -56,6 +65,8 @@ export function configurePassport() {
     )
   );
 
+  isGoogleStrategyConfigured = true;
+
   // Serialize user to session
   passport.serializeUser((user, done) => {
     done(null, user);
@@ -74,6 +85,7 @@ export function createAuthRoutes(app) {
   // Initiate Google OAuth flow
   app.get(
     '/auth/google',
+    requireGoogleStrategy,
     passport.authenticate('google', {
       scope: ['profile', 'email'],
       prompt: 'select_account', // Force account selection
@@ -83,14 +95,15 @@ export function createAuthRoutes(app) {
   // OAuth callback route
   app.get(
     '/auth/google/callback',
+    requireGoogleStrategy,
     passport.authenticate('google', {
       failureRedirect: '/login.html?error=auth_failed',
       failureMessage: true,
     }),
     (req, res) => {
       // Successful authentication
-      // Redirect to the page they originally wanted, or home
-      const returnTo = req.session.returnTo || '/';
+      // Redirect to the page they originally wanted, or CSV import by default.
+      const returnTo = req.session.returnTo || '/csv-import.html';
       delete req.session.returnTo;
       res.redirect(returnTo);
     }
@@ -110,13 +123,27 @@ export function createAuthRoutes(app) {
 
   // Check authentication status (for frontend)
   app.get('/api/auth/status', (req, res) => {
+    const proxyEmailRaw = req.authIdentity?.email;
+    const proxyEmail = proxyEmailRaw ? String(proxyEmailRaw).toLowerCase() : null;
+
     if (req.isAuthenticated()) {
       res.json({
         authenticated: true,
+        source: 'session',
         user: {
           email: req.user.email,
           name: req.user.name,
           picture: req.user.picture,
+        },
+      });
+    } else if (proxyEmail) {
+      res.json({
+        authenticated: true,
+        source: 'iap-header',
+        user: {
+          email: proxyEmail,
+          name: proxyEmail,
+          picture: null,
         },
       });
     } else {

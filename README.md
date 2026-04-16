@@ -171,6 +171,9 @@ The web interface runs on http://localhost:3000 by default. Perfect for single-c
 
 All documentation is in the respective folders:
 - **`.deployment/DEPLOYMENT.md`** - Complete cloud deployment guide (Google Cloud Run)
+- `docs/setup/DEPLOYMENT_RUNBOOK.md` - Staging/production rollout, validation, and rollback runbook
+- `docs/setup/MVP_TEST_PLAN.md` - Incremental MVP validation checklist for usability and event creation
+- `docs/setup/MVP_SIGNOFF_CHECKLIST.md` - Final MVP go/no-go checklist with owner and pass/fail tracking
 - `docs/WEB_USER_GUIDE.md` - Simple guide for lab members
 - `docs/SETUP_GUIDE.md` - Google Calendar API setup (detailed)
 - `docs/setup/DEPLOYMENT_PLAN.md` - Original Render.com deployment plan (archived)

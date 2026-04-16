@@ -12,13 +12,17 @@
       align-items: center;
       min-height: 100vh;
       margin: 0;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background:
+        radial-gradient(circle at 12% 10%, rgba(47, 134, 217, 0.14), transparent 34%),
+        radial-gradient(circle at 90% 86%, rgba(14, 165, 160, 0.1), transparent 36%),
+        linear-gradient(180deg, #f7fbff 0%, #f2f6fa 100%);
     }
 
     .login-container {
       background: white;
-      border-radius: 12px;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+      border: 1px solid #e1e8f0;
+      border-radius: 16px;
+      box-shadow: 0 14px 34px rgba(16, 35, 61, 0.12);
       padding: 48px 40px;
       text-align: center;
       max-width: 400px;
@@ -77,9 +81,9 @@
       color: #888;
       margin-top: 24px;
       padding: 16px;
-      background: #f8f9fa;
+      background: #f5f8fb;
       border-radius: 8px;
-      border-left: 4px solid #667eea;
+      border-left: 4px solid #2f86d9;
     }
 
     .alert {
@@ -130,6 +134,15 @@
         <div class="alert alert-error">
           <strong>Access Denied</strong><br>
           Only @brown.edu accounts are allowed to access this application.
+        </div>
+      `;
+    }
+
+    if (urlParams.get('error') === 'auth_not_configured') {
+      alertContainer.innerHTML = `
+        <div class="alert alert-error">
+          <strong>Authentication Not Configured</strong><br>
+          AUTH_CLIENT_ID and AUTH_CLIENT_SECRET are missing. Configure these in your environment to enable Google sign-in.
         </div>
       `;
     }

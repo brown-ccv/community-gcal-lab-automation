@@ -9,7 +9,7 @@ import multer from 'multer';
 import dotenv from 'dotenv';
 import { createEvents, deleteEvents, deleteAllDemoEvents, createEventsFromCSV, deleteRecentEvents } from './calendar.js';
 import { parseCSVFromBuffer, getEventSummary } from './csvParser.js';
-import { requireAuth, isAuthBypassed } from './middleware/auth.js';
+import { extractProxyIdentity, getAuthenticatedEmail, requireAuth, requireGroupMember, isAuthBypassed } from './middleware/auth.js';
 import { configurePassport, createAuthRoutes } from './routes/auth.js';
 
 // Load environment variables
@@ -57,6 +57,7 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 configurePassport();
+app.use(extractProxyIdentity);
 
 // Middleware
 app.use(express.urlencoded({ extended: true }));
@@ -69,13 +70,20 @@ app.use((req, res, next) => {
   const publicFiles = ['/login.html', '/styles.css'];
   const isPublic = publicFiles.some(file => req.path === file) || 
                    req.path.startsWith('/auth/');
+
+  const hasTrustedIdentity = Boolean(getAuthenticatedEmail(req));
+
+  // If already authenticated via trusted proxy identity/session, skip login page.
+  if (req.path === '/login.html' && hasTrustedIdentity) {
+    return res.redirect('/');
+  }
   
   if (isPublic || isAuthBypassed()) {
     return next();
   }
   
   // For protected static files, check authentication
-  if (req.isAuthenticated()) {
+  if (req.isAuthenticated() || hasTrustedIdentity) {
     return next();
   }
   
@@ -88,7 +96,7 @@ app.use((req, res, next) => {
   return res.status(401).send('Unauthorized');
 });
 
-app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use(express.static(path.join(__dirname, '..', 'public'), { index: false }));
 
 // Configure multer for file uploads
 const upload = multer({ 
@@ -145,14 +153,15 @@ function getAuthorizedClient() {
 createAuthRoutes(app);
 
 // Routes
+const requireProtectedAccess = [requireAuth, requireGroupMember];
 
 // API endpoint to check demo mode
 app.get('/api/demo-mode', (req, res) => {
   res.json({ demoMode: DEMO_MODE });
 });
 
-// Home page - main form (PROTECTED)
-app.get('/', requireAuth, (req, res) => {
+// Home page (PROTECTED)
+app.get('/', requireProtectedAccess, (req, res) => {
   // Check if credentials.json exists (for calendar API, not user auth)
   if (!DEMO_MODE && !fs.existsSync(CREDENTIALS_PATH)) {
     return res.sendFile(path.join(__dirname, '..', 'public', 'setup-required.html'));
@@ -164,6 +173,19 @@ app.get('/', requireAuth, (req, res) => {
   }
   
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+});
+
+// Manual entry deep link (PROTECTED)
+app.get('/manual-entry', requireProtectedAccess, (req, res) => {
+  if (!DEMO_MODE && !fs.existsSync(CREDENTIALS_PATH)) {
+    return res.sendFile(path.join(__dirname, '..', 'public', 'setup-required.html'));
+  }
+
+  if (!DEMO_MODE && !isAuthorized()) {
+    return res.redirect('/authorize');
+  }
+
+  res.redirect('/?mode=manual');
 });
 
 // Authorization flow
@@ -253,7 +275,7 @@ app.get('/oauth2callback', async (req, res) => {
 });
 
 // Create events endpoint (PROTECTED)
-app.post('/create-events', requireAuth, async (req, res) => {
+app.post('/create-events', requireProtectedAccess, async (req, res) => {
   if (!DEMO_MODE && !isAuthorized()) {
     return res.redirect('/authorize');
   }
@@ -269,6 +291,31 @@ app.post('/create-events', requireAuth, async (req, res) => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(attendeeEmail)) {
     return res.status(400).json({ error: 'Invalid email address format.' });
+  }
+
+  if (DEMO_MODE) {
+    try {
+      // In demo mode, run dry-run generation so users can validate payload and schedule logic.
+      const results = await createEvents({}, {
+        baseDate,
+        title,
+        time: time || '09:00',
+        attendeeEmail,
+        calendarId: 'primary',
+        dryRun: true,
+        demoMode: true,
+      });
+
+      return res.json({
+        success: true,
+        demo: true,
+        message: `[DEMO] Generated ${results.length} events without writing to Google Calendar`,
+        results,
+      });
+    } catch (error) {
+      console.error('Error creating demo events:', error);
+      return res.status(500).json({ error: error.message });
+    }
   }
   
   try {
@@ -291,7 +338,7 @@ app.post('/create-events', requireAuth, async (req, res) => {
 });
 
 // Delete events endpoint (PROTECTED)
-app.post('/delete-events', requireAuth, async (req, res) => {
+app.post('/delete-events', requireProtectedAccess, async (req, res) => {
   if (!DEMO_MODE && !isAuthorized()) {
     return res.redirect('/authorize');
   }
@@ -306,6 +353,22 @@ app.post('/delete-events', requireAuth, async (req, res) => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(attendeeEmail)) {
     return res.status(400).json({ error: 'Invalid email address format.' });
+  }
+
+  if (DEMO_MODE) {
+    return res.json({
+      success: true,
+      demo: true,
+      message: '[DEMO] Delete simulated. No calendar events were removed.',
+      results: [
+        {
+          type: 'dry-run',
+          title,
+          baseDate,
+          attendeeEmail,
+        },
+      ],
+    });
   }
   
   try {
@@ -325,9 +388,20 @@ app.post('/delete-events', requireAuth, async (req, res) => {
 });
 
 // Clear all demo events endpoint (PROTECTED)
-app.post('/clear-demo-events', requireAuth, async (req, res) => {
+app.post('/clear-demo-events', requireProtectedAccess, async (req, res) => {
   if (!DEMO_MODE && !isAuthorized()) {
     return res.redirect('/authorize');
+  }
+
+  if (DEMO_MODE) {
+    return res.json({
+      success: true,
+      demo: true,
+      deleted: 0,
+      errors: 0,
+      errorDetails: [],
+      message: '[DEMO] Clear simulated. No calendar events were removed.',
+    });
   }
   
   try {
@@ -349,7 +423,7 @@ app.post('/clear-demo-events', requireAuth, async (req, res) => {
 });
 
 // CSV Import - Preview endpoint (PROTECTED)
-app.post('/api/csv/preview', requireAuth, upload.single('csvFile'), (req, res) => {
+app.post('/api/csv/preview', requireProtectedAccess, upload.single('csvFile'), (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -371,7 +445,7 @@ app.post('/api/csv/preview', requireAuth, upload.single('csvFile'), (req, res) =
 });
 
 // CSV Import - Create events endpoint (PROTECTED)
-app.post('/api/csv/import', requireAuth, upload.single('csvFile'), async (req, res) => {
+app.post('/api/csv/import', requireProtectedAccess, upload.single('csvFile'), async (req, res) => {
   try {
     if (DEMO_MODE) {
       // Demo mode: simulate import
@@ -432,7 +506,7 @@ app.post('/api/csv/import', requireAuth, upload.single('csvFile'), async (req, r
 });
 
 // Delete recent events (debugging tool) (PROTECTED)
-app.post('/api/delete-recent', requireAuth, async (req, res) => {
+app.post('/api/delete-recent', requireProtectedAccess, async (req, res) => {
   try {
     if (DEMO_MODE) {
       return res.json({
@@ -462,20 +536,11 @@ app.post('/api/delete-recent', requireAuth, async (req, res) => {
 
 // Health check for Render
 app.get('/health', (req, res) => {
-  const credentialsExist = fs.existsSync(CREDENTIALS_PATH);
-  const tokenExists = fs.existsSync(TOKEN_PATH);
-  
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     authorized: isAuthorized(),
-    credentialsPath: CREDENTIALS_PATH,
-    credentialsExist,
-    tokenExists,
-    env: {
-      nodeEnv: process.env.NODE_ENV,
-      hasRedirectUri: !!process.env.REDIRECT_URI,
-      redirectUri: process.env.REDIRECT_URI || 'not set'
-    }
+    demoMode: DEMO_MODE,
+    authBypass: BYPASS_AUTH,
   });
 });
 

@@ -7,6 +7,7 @@
     "start": "node start-live.js",
     "start:demo": "BYPASS_AUTH=true DEMO_MODE=true node start-demo.js",
     "dev": "BYPASS_AUTH=true node src/server.js",
+    "test": "node --test",
     "cli": "node src/cli.js",
     "csv-import": "node src/csvImport.js"
   },
