@@ -198,7 +198,7 @@ jobs:
           image: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ needs.prepare.outputs.project-id }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:${{ github.sha }}
           flags: |
             --service-account=${{ needs.prepare.outputs.service-account }}
-            --allow-unauthenticated
+            --no-allow-unauthenticated
             --port=8080
             --cpu=1
             --memory=512Mi
@@ -209,6 +209,7 @@ jobs:
             NODE_ENV=production
             DEMO_MODE=false
             BYPASS_AUTH=false
+            AUTH_MODE=proxy
             ALLOWED_DOMAIN=brown.edu
             REQUIRE_GROUP_MEMBERSHIP=true
           secrets: |
@@ -242,6 +243,7 @@ jobs:
         run: |
           SERVICE_URL="${{ steps.deploy.outputs.url }}"
           echo "🏥 Checking service health..."
+          ID_TOKEN=$(gcloud auth print-identity-token --audiences="${SERVICE_URL}")
           
           # Wait for service to be ready
           sleep 10
@@ -251,7 +253,7 @@ jobs:
           RETRY=0
           
           while [ $RETRY -lt $MAX_RETRIES ]; do
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${SERVICE_URL}/login.html" || echo "000")
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer ${ID_TOKEN}" "${SERVICE_URL}/health" || echo "000")
             
             if [ "$HTTP_CODE" = "200" ]; then
               echo "✅ Health check passed (HTTP ${HTTP_CODE})"
@@ -270,8 +272,10 @@ jobs:
         if: success()
         env:
           SERVICE_URL: ${{ steps.deploy.outputs.url }}
+          AUTH_MODE: proxy
         run: |
-          node scripts/verify-deployment.mjs
+          ID_TOKEN=$(gcloud auth print-identity-token --audiences="${SERVICE_URL}")
+          ID_TOKEN="${ID_TOKEN}" node scripts/verify-deployment.mjs
           
       - name: 📊 Deployment summary
         if: always()

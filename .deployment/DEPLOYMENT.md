@@ -530,21 +530,21 @@ gcloud run deploy gcal-lab-automation \
   --region=${REGION} \
   --platform=managed \
   --service-account=gcal-lab-automation-sa@${PROJECT_ID}.iam.gserviceaccount.com \
-  --allow-unauthenticated \
+  --no-allow-unauthenticated \
   --port=8080 \
   --cpu=1 \
   --memory=512Mi \
   --timeout=300 \
   --min-instances=0 \
   --max-instances=10 \
-  --set-env-vars="NODE_ENV=production,DEMO_MODE=false,BYPASS_AUTH=false,ALLOWED_DOMAIN=brown.edu" \
+  --set-env-vars="NODE_ENV=production,DEMO_MODE=false,BYPASS_AUTH=false,AUTH_MODE=proxy,ALLOWED_DOMAIN=brown.edu" \
   --set-secrets="AUTH_CLIENT_ID=auth-client-id:latest,AUTH_CLIENT_SECRET=auth-client-secret:latest,SESSION_SECRET=session-secret:latest,REMINDER_CALENDAR_ID=reminder-calendar-id:latest,RETENTION_CALENDAR_ID=retention-calendar-id:latest" \
   --project=${PROJECT_ID} \
   --quiet
 ```
 
 **Deployment flags explained**:
-- `--allow-unauthenticated`: Public access (OAuth handles app-level auth)
+- `--no-allow-unauthenticated`: Require Cloud Run edge authentication (single login)
 - `--port=8080`: Container port (Cloud Run standard)
 - `--cpu=1`: 1 vCPU per instance
 - `--memory=512Mi`: 512MB RAM per instance
@@ -723,14 +723,14 @@ gcloud run deploy ${SERVICE_NAME} \
   --region=${REGION} \
   --platform=managed \
   --service-account=${SERVICE_NAME}-sa@${PROJECT_ID}.iam.gserviceaccount.com \
-  --allow-unauthenticated \
+  --no-allow-unauthenticated \
   --port=8080 \
   --cpu=1 \
   --memory=512Mi \
   --timeout=300 \
   --min-instances=0 \
   --max-instances=10 \
-  --set-env-vars="NODE_ENV=production,DEMO_MODE=false,BYPASS_AUTH=false,ALLOWED_DOMAIN=brown.edu" \
+  --set-env-vars="NODE_ENV=production,DEMO_MODE=false,BYPASS_AUTH=false,AUTH_MODE=proxy,ALLOWED_DOMAIN=brown.edu" \
   --set-secrets="AUTH_CLIENT_ID=auth-client-id:latest,AUTH_CLIENT_SECRET=auth-client-secret:latest,SESSION_SECRET=session-secret:latest,REMINDER_CALENDAR_ID=reminder-calendar-id:latest,RETENTION_CALENDAR_ID=retention-calendar-id:latest" \
   --project=${PROJECT_ID} \
   --quiet

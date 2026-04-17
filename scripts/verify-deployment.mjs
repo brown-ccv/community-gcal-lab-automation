@@ -1,4 +1,6 @@
 const serviceUrlRaw = process.env.SERVICE_URL || '';
+const idToken = process.env.ID_TOKEN || '';
+const authMode = (process.env.AUTH_MODE || 'oauth').trim().toLowerCase();
 
 if (!serviceUrlRaw) {
   console.error('SERVICE_URL is required');
@@ -8,7 +10,12 @@ if (!serviceUrlRaw) {
 const serviceUrl = serviceUrlRaw.replace(/\/$/, '');
 
 async function getJson(pathname, init = {}) {
-  const response = await fetch(`${serviceUrl}${pathname}`, init);
+  const headers = {
+    ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+    ...(init.headers || {}),
+  };
+
+  const response = await fetch(`${serviceUrl}${pathname}`, { ...init, headers });
   const contentType = response.headers.get('content-type') || '';
   const body = contentType.includes('application/json') ? await response.json() : null;
   return { response, body };
@@ -31,9 +38,14 @@ async function run() {
     throw new Error(`/health exposed forbidden key: ${leakedKey}`);
   }
 
-  const login = await fetch(`${serviceUrl}/login.html`, { redirect: 'manual' });
-  if (login.status !== 200) {
-    throw new Error(`/login.html returned ${login.status}`);
+  const login = await getJson('/login.html', { redirect: 'manual' });
+  if (authMode === 'proxy') {
+    const proxyAllowedStatuses = new Set([200, 301, 302, 303, 307, 308]);
+    if (!proxyAllowedStatuses.has(login.response.status)) {
+      throw new Error(`/login.html returned ${login.response.status} in proxy mode`);
+    }
+  } else if (login.response.status !== 200) {
+    throw new Error(`/login.html returned ${login.response.status}`);
   }
 
   const authStatus = await getJson('/api/auth/status');
@@ -45,15 +57,22 @@ async function run() {
     throw new Error('/api/auth/status response missing authenticated boolean');
   }
 
-  const protectedRoute = await fetch(`${serviceUrl}/`, { redirect: 'manual' });
+  const protectedRoute = await getJson('/', { redirect: 'manual' });
   const redirectStatusCodes = new Set([301, 302, 303, 307, 308]);
-  if (!redirectStatusCodes.has(protectedRoute.status)) {
-    throw new Error(`/ expected redirect, got ${protectedRoute.status}`);
-  }
 
-  const redirectLocation = protectedRoute.headers.get('location') || '';
-  if (!redirectLocation.includes('/login.html')) {
-    throw new Error(`/ redirected to unexpected location: ${redirectLocation || 'empty'}`);
+  if (authMode === 'proxy') {
+    if (protectedRoute.response.status !== 200) {
+      throw new Error(`/ expected 200 in proxy mode, got ${protectedRoute.response.status}`);
+    }
+  } else {
+    if (!redirectStatusCodes.has(protectedRoute.response.status)) {
+      throw new Error(`/ expected redirect, got ${protectedRoute.response.status}`);
+    }
+
+    const redirectLocation = protectedRoute.response.headers.get('location') || '';
+    if (!redirectLocation.includes('/login.html')) {
+      throw new Error(`/ redirected to unexpected location: ${redirectLocation || 'empty'}`);
+    }
   }
 
   console.log('Deployment verification checks passed');

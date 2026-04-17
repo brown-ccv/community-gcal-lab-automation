@@ -3,6 +3,7 @@ import { google } from 'googleapis';
 
 const ALLOWED_DOMAIN = process.env.ALLOWED_DOMAIN || 'brown.edu';
 const BYPASS_AUTH = process.env.BYPASS_AUTH === 'true';
+const AUTH_MODE = (process.env.AUTH_MODE || 'oauth').trim().toLowerCase();
 const DIRECTORY_SCOPE = 'https://www.googleapis.com/auth/admin.directory.group.member.readonly';
 const GROUP_CACHE_TTL_MS = parseInt(process.env.GROUP_MEMBERSHIP_CACHE_TTL_MS || '300000', 10);
 
@@ -177,11 +178,19 @@ export function getAuthenticatedEmail(req) {
   return null;
 }
 
+export function isProxyAuthMode() {
+  return AUTH_MODE === 'proxy';
+}
+
 /**
  * Middleware to require authentication for protected routes
  * Can be bypassed in development with BYPASS_AUTH=true
  */
 export function requireAuth(req, res, next) {
+  if (isProxyAuthMode()) {
+    return next();
+  }
+
   // Safety check: never bypass auth in production
   if (BYPASS_AUTH && process.env.NODE_ENV === 'production') {
     console.error('SECURITY ERROR: Cannot bypass authentication in production!');
@@ -227,6 +236,10 @@ export function verifyDomain(email) {
  * Enforce explicit group membership on protected routes.
  */
 export async function requireGroupMember(req, res, next) {
+  if (isProxyAuthMode()) {
+    return next();
+  }
+
   if (!isGroupEnforcementEnabled()) {
     return next();
   }

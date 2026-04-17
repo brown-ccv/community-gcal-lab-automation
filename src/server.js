@@ -22,6 +22,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const DEMO_MODE = process.env.DEMO_MODE === 'true';
 const BYPASS_AUTH = process.env.BYPASS_AUTH === 'true';
+const AUTH_MODE = (process.env.AUTH_MODE || 'oauth').trim().toLowerCase();
 
 // Configuration
 const SCOPES = ['https://www.googleapis.com/auth/calendar'];
@@ -35,6 +36,7 @@ const REDIRECT_URI = process.env.REDIRECT_URI || 'http://localhost:3000/oauth2ca
 console.log('Using credentials from:', CREDENTIALS_PATH);
 console.log('Demo mode:', DEMO_MODE ? 'ENABLED (no real API calls)' : 'DISABLED (real calendar events)');
 console.log('Auth bypass:', BYPASS_AUTH ? 'ENABLED (no authentication required)' : 'DISABLED (authentication required)');
+console.log('Auth mode:', AUTH_MODE);
 
 // Session configuration
 const SESSION_SECRET = process.env.SESSION_SECRET || 'your-secret-key-change-this-in-production';
@@ -74,7 +76,7 @@ app.use((req, res, next) => {
   const hasTrustedIdentity = Boolean(getAuthenticatedEmail(req));
 
   // If already authenticated via trusted proxy identity/session, skip login page.
-  if (req.path === '/login.html' && hasTrustedIdentity) {
+  if (req.path === '/login.html' && (hasTrustedIdentity || AUTH_MODE === 'proxy')) {
     return res.redirect('/');
   }
   
@@ -83,7 +85,7 @@ app.use((req, res, next) => {
   }
   
   // For protected static files, check authentication
-  if (req.isAuthenticated() || hasTrustedIdentity) {
+  if (AUTH_MODE === 'proxy' || req.isAuthenticated() || hasTrustedIdentity) {
     return next();
   }
   
