@@ -67,7 +67,7 @@ app.use(express.json());
 // Allow public access to login page, auth assets, and styles
 app.use((req, res, next) => {
   // Public files that don't require authentication
-  const publicFiles = ['/login.html', '/styles.css'];
+  const publicFiles = ['/login.html', '/styles.css', '/health', '/api/auth/status'];
   const isPublic = publicFiles.some(file => req.path === file) || 
                    req.path.startsWith('/auth/');
 
