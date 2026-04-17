@@ -57,7 +57,7 @@
               <div id="csv-event-types-list" class="csv-event-types-list"></div>
             </div>
 
-            <div class="form-group" style="margin-top: 12px;">
+            <div class="form-group" id="csv-demo-mode-group" style="margin-top: 12px;">
               <label style="display:flex;align-items:center;cursor:pointer;user-select:none;">
                 <input type="checkbox" id="csv-demo-mode" checked style="margin-right:10px;width:18px;height:18px;cursor:pointer;">
                 <span>
@@ -65,6 +65,12 @@
                   <span style="color: #5f6b7a; font-weight: normal;">(recommended for testing)</span>
                 </span>
               </label>
+            </div>
+
+            <div id="csv-duplicates-box" class="preview-box" style="display:none;">
+              <strong>Duplicates Detected</strong>
+              <p><small id="csv-duplicate-summary">0 duplicate events already exist.</small></p>
+              <div id="csv-duplicate-participants" class="csv-event-types-list"></div>
             </div>
 
             <div class="preview-box">
@@ -76,6 +82,8 @@
               <button type="button" class="btn btn-secondary" id="csv-cancel-btn">Cancel</button>
               <button type="button" class="btn btn-primary" id="csv-import-btn">Create Events</button>
             </div>
+
+            <div id="csv-import-report" class="preview-box" style="display:none; margin-top: 16px;"></div>
           </div>
         </div>
 
@@ -124,7 +132,7 @@
               <small class="help-text">Calendar invites will be sent to this email address.</small>
             </div>
 
-            <div class="form-group">
+            <div class="form-group" id="manual-demo-mode-group">
               <label style="display: flex; align-items: center; cursor: pointer; user-select: none;">
                 <input 
                   type="checkbox" 
@@ -213,7 +221,7 @@
           </form>
         </div>
 
-        <div class="card compact-card warning-card">
+        <div class="card compact-card warning-card" id="clear-demo-card">
           <div class="card-heading">
             <h2>Step 3: Clear Demo Events</h2>
             <p class="help-text">Remove all events tagged as demo mode.</p>
@@ -224,7 +232,7 @@
 
         <div class="card compact-card">
           <div class="card-heading">
-            <h2>Step 4: Delete Recent Events</h2>
+            <h2 id="delete-recent-title">Step 4: Delete Recent Events</h2>
             <p class="help-text">Debug utility for removing all automation-created events in a recent window.</p>
           </div>
 

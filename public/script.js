@@ -65,13 +65,16 @@ function renderCsvPreview(preview) {
   const totalEvents = document.getElementById('csv-total-events');
   const eventTypesList = document.getElementById('csv-event-types-list');
   const sampleEvents = document.getElementById('csv-sample-events');
+  const duplicatesBox = document.getElementById('csv-duplicates-box');
+  const duplicateSummary = document.getElementById('csv-duplicate-summary');
+  const duplicateParticipants = document.getElementById('csv-duplicate-participants');
 
   if (!previewSection || !totalParticipants || !totalEvents || !eventTypesList || !sampleEvents) {
     return;
   }
 
   totalParticipants.textContent = String(preview.summary.totalParticipants);
-  totalEvents.textContent = String(preview.summary.totalEvents);
+  totalEvents.textContent = String(preview.summary.importableEvents ?? preview.summary.totalEvents);
 
   eventTypesList.innerHTML = '';
   for (const [eventType, count] of Object.entries(preview.summary.eventsByType || {})) {
@@ -91,6 +94,47 @@ function renderCsvPreview(preview) {
     `;
     sampleEvents.appendChild(card);
   });
+  
+  if (duplicatesBox && duplicateSummary && duplicateParticipants) {
+    const duplicateEvents = preview.duplicateSampleEvents || [];
+    const duplicateTotal = preview.summary?.duplicateEvents ?? duplicateEvents.length;
+
+    if (duplicateTotal > 0) {
+      const countsByParticipant = new Map(
+        Object.entries(preview.summary?.duplicateParticipants || {})
+      );
+
+      if (countsByParticipant.size === 0) {
+        duplicateEvents.forEach((event) => {
+          const key = event.participantId || 'Unknown';
+          countsByParticipant.set(key, (countsByParticipant.get(key) || 0) + 1);
+        });
+      }
+
+      duplicateSummary.textContent = `${duplicateTotal} event(s) already exist and will be skipped.`;
+      duplicateParticipants.innerHTML = '';
+
+      [...countsByParticipant.entries()]
+        .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+        .forEach(([participantId, count]) => {
+          const row = document.createElement('div');
+          row.className = 'csv-event-type-item';
+          row.innerHTML = `<span>Participant ${participantId}</span><strong>${count}</strong>`;
+          duplicateParticipants.appendChild(row);
+        });
+
+      if (countsByParticipant.size === 0) {
+        const row = document.createElement('div');
+        row.className = 'csv-event-type-item';
+        row.innerHTML = `<span>Duplicates found across additional participants</span><strong>${duplicateTotal}</strong>`;
+        duplicateParticipants.appendChild(row);
+      }
+
+      duplicatesBox.style.display = 'block';
+    } else {
+      duplicatesBox.style.display = 'none';
+    }
+  }
 
   previewSection.style.display = 'block';
 }
@@ -98,8 +142,17 @@ function renderCsvPreview(preview) {
 function resetCsvPreview() {
   const previewSection = document.getElementById('csv-preview-section');
   const fileInput = document.getElementById('csv-file-input');
+  const reportBox = document.getElementById('csv-import-report');
+  const duplicatesBox = document.getElementById('csv-duplicates-box');
   if (previewSection) {
     previewSection.style.display = 'none';
+  }
+  if (reportBox) {
+    reportBox.style.display = 'none';
+    reportBox.innerHTML = '';
+  }
+  if (duplicatesBox) {
+    duplicatesBox.style.display = 'none';
   }
   if (fileInput) {
     fileInput.value = '';
@@ -136,7 +189,13 @@ async function parseCsvFile(file) {
 
     currentCsvPreviewData = { file, payload };
     renderCsvPreview(payload);
-    showAlert('CSV preview ready. Review sample events before creating.', 'success');
+    const importable = payload.summary?.importableEvents ?? payload.summary?.totalEvents ?? 0;
+    const duplicates = payload.summary?.duplicateEvents ?? 0;
+    const totalAll = payload.summary?.totalEventsAll ?? importable;
+    const message = duplicates > 0
+      ? `CSV preview ready. Importable: ${importable} of ${totalAll}. Duplicates skipped in preview: ${duplicates}.`
+      : `CSV preview ready. Importable events: ${importable}.`;
+    showAlert(message, 'success');
   } catch (error) {
     showAlert(`Error: ${error.message}`, 'error');
   }
@@ -179,15 +238,42 @@ async function importCsvFromStep1() {
     }
 
     if (payload.demo) {
-      showAlert(payload.message || 'Demo import completed.', 'success', true);
+      const previewEvents = currentCsvPreviewData?.payload?.events || [];
+      const demoResults = {
+        created: previewEvents.length,
+        skipped: 0,
+        errors: 0,
+        details: previewEvents.map((event) => ({
+          type: 'created',
+          title: event.title,
+          date: event.date,
+          participantId: event.participantId,
+        })),
+      };
+
+      displayCsvImportReport(demoResults);
+      showAlert(payload.message || `Demo import complete. Would create: ${demoResults.created}, Skipped: 0, Errors: 0`, 'success', true);
+
+      // Keep preview/report visible after demo import so users can review/download output.
+      currentCsvPreviewData = null;
+      const fileInput = document.getElementById('csv-file-input');
+      if (fileInput) {
+        fileInput.value = '';
+      }
     } else {
       const created = payload.results?.created ?? 0;
       const skipped = payload.results?.skipped ?? 0;
       const errors = payload.results?.errors ?? 0;
+      displayCsvImportReport(payload.results || {});
       showAlert(`CSV import complete. Created: ${created}, Skipped: ${skipped}, Errors: ${errors}`, errors > 0 ? 'error' : 'success', true);
-    }
 
-    resetCsvPreview();
+      // Keep the preview panel visible so users can read/download the post-import report.
+      currentCsvPreviewData = null;
+      const fileInput = document.getElementById('csv-file-input');
+      if (fileInput) {
+        fileInput.value = '';
+      }
+    }
   } catch (error) {
     showAlert(`Error: ${error.message}`, 'error');
   } finally {
@@ -314,23 +400,64 @@ function shiftWeekendToFriday(dateStr) {
             Events will be simulated. No actual calendar modifications will be made.
           </p>
         `;
+        banner.style.display = 'block';
       } else {
-        banner.style.backgroundColor = '#e8f5e9';
-        banner.style.borderLeft = '4px solid #4caf50';
-        banner.innerHTML = `
-          <strong>Live Mode</strong>
-          <p style="margin: 0.5rem 0 0 0;">
-            Connected to Google Calendar API. Events created here will be <strong>real calendar invites</strong> sent to participants.
-          </p>
-        `;
+        // Production UI: no live banner copy needed.
+        banner.innerHTML = '';
+        banner.style.display = 'none';
       }
-      banner.style.display = 'block';
     }
+
+    applyDemoModeVisibility();
   } catch (error) {
     console.error('Failed to check demo mode, defaulting to demo:', error);
     IS_DEMO_MODE = true;
+    applyDemoModeVisibility();
   }
 })();
+
+function applyDemoModeVisibility() {
+  const csvDemoGroup = document.getElementById('csv-demo-mode-group');
+  const manualDemoGroup = document.getElementById('manual-demo-mode-group');
+  const clearDemoCard = document.getElementById('clear-demo-card');
+  const deleteRecentTitle = document.getElementById('delete-recent-title');
+
+  const hiddenStyle = IS_DEMO_MODE ? '' : 'none';
+
+  if (csvDemoGroup) {
+    csvDemoGroup.style.display = hiddenStyle;
+  }
+
+  if (manualDemoGroup) {
+    manualDemoGroup.style.display = hiddenStyle;
+  }
+
+  if (clearDemoCard) {
+    if (IS_DEMO_MODE) {
+      clearDemoCard.style.display = hiddenStyle;
+    } else {
+      // Remove Step 3 card entirely in live mode so there is no visual gap.
+      clearDemoCard.remove();
+    }
+  }
+
+  if (deleteRecentTitle) {
+    deleteRecentTitle.textContent = IS_DEMO_MODE
+      ? 'Step 4: Delete Recent Events'
+      : 'Step 3: Delete Recent Events';
+  }
+
+  if (!IS_DEMO_MODE) {
+    const csvDemoCheckbox = document.getElementById('csv-demo-mode');
+    const manualDemoCheckbox = document.getElementById('demoMode');
+    if (csvDemoCheckbox) {
+      csvDemoCheckbox.checked = false;
+    }
+    if (manualDemoCheckbox) {
+      manualDemoCheckbox.checked = false;
+    }
+  }
+}
 
 // Show alert message
 function showAlert(message, type = 'success', persist = false) {
@@ -355,11 +482,14 @@ function showAlert(message, type = 'success', persist = false) {
   alertDiv.style.display = 'block';
   alertDiv.style.position = 'relative';
   
-  // Auto-hide after 8 seconds for success messages (unless persist is true)
-  if (type === 'success' && !persist) {
-    setTimeout(() => {
-      alertDiv.style.display = 'none';
-    }, 8000);
+  // Keep errors visible until manually dismissed. Auto-hide only non-error messages.
+  if (!persist) {
+    const hideDelayMs = type === 'success' ? 15000 : type === 'info' ? 12000 : 0;
+    if (hideDelayMs > 0) {
+      setTimeout(() => {
+        alertDiv.style.display = 'none';
+      }, hideDelayMs);
+    }
   }
   
   // Scroll to top to show alert
@@ -551,6 +681,22 @@ document.getElementById('create-form')?.addEventListener('submit', async (e) => 
         }
         
         message += '\n\nCheck your calendar and email.';
+
+        const createdDetails = data.results
+          .filter((r) => r.type === 'created')
+          .map((r) => ({
+            title: r.title,
+            date: r.date,
+            wasShifted: Boolean(r.wasShifted),
+            originalDate: r.originalDate || null,
+          }));
+
+        if (createdDetails.length > 0) {
+          displayManualEntryReport({
+            created: createdDetails.length,
+            details: createdDetails,
+          }, title);
+        }
       } else if (skipped > 0) {
         message = `All ${skipped} event(s) already exist. No duplicates created.`;
       }
@@ -810,7 +956,7 @@ document.getElementById('delete-recent-btn').addEventListener('click', async fun
           }
         }
       } else {
-        message = `No automation events found in the last ${hours} hours.`;
+        message = `No automated events found in the last ${hours} hours.`;
       }
       
       if (results.errors > 0) {
@@ -927,6 +1073,78 @@ function displayManualEntryReport(reportData, projectTitle) {
   
   // Insert after the form card
   formCard.parentNode.insertBefore(reportContainer, formCard.nextSibling);
+}
+
+function generateCsvImportReport(results) {
+  const timestamp = new Date().toLocaleString();
+  const details = Array.isArray(results.details) ? results.details : [];
+  const createdEvents = details.filter((event) => event.type === 'created');
+  const skippedEvents = details.filter((event) => event.type === 'skipped');
+  const errorEvents = details.filter((event) => event.type === 'error');
+
+  let report = `CSV Import Report\n`;
+  report += `Generated: ${timestamp}\n`;
+  report += `${'='.repeat(60)}\n\n`;
+  report += `SUMMARY:\n`;
+  report += `Created: ${results.created || 0}\n`;
+  report += `Skipped (duplicates): ${results.skipped || 0}\n`;
+  report += `Errors: ${results.errors || 0}\n\n`;
+
+  if (createdEvents.length > 0) {
+    report += `CREATED EVENTS:\n`;
+    report += `${'-'.repeat(60)}\n`;
+    createdEvents.forEach((event) => {
+      report += `• ${event.title}\n`;
+      report += `  Date: ${event.date}\n`;
+    });
+    report += `\n`;
+  }
+
+  if (skippedEvents.length > 0) {
+    report += `SKIPPED DUPLICATES:\n`;
+    report += `${'-'.repeat(60)}\n`;
+    skippedEvents.forEach((event) => {
+      report += `• ${event.participantId || 'Unknown'} - ${event.title} (${event.date})\n`;
+    });
+    report += `\n`;
+  }
+
+  if (errorEvents.length > 0) {
+    report += `ERRORS:\n`;
+    report += `${'-'.repeat(60)}\n`;
+    errorEvents.forEach((event) => {
+      report += `• ${event.participantId || 'Unknown'} - ${event.title}: ${event.error}\n`;
+    });
+  }
+
+  return report;
+}
+
+function displayCsvImportReport(results) {
+  const reportContainer = document.getElementById('csv-import-report');
+  if (!reportContainer) {
+    return;
+  }
+
+  const reportText = generateCsvImportReport(results);
+  const created = results.created || 0;
+  const skipped = results.skipped || 0;
+  const errors = results.errors || 0;
+
+  reportContainer.innerHTML = `
+    <strong>Import Summary</strong>
+    <p><small>Created: ${created} | Skipped: ${skipped} | Errors: ${errors}</small></p>
+    <details>
+      <summary>View detailed report</summary>
+      <pre style="white-space: pre-wrap; margin-top: 8px;">${reportText}</pre>
+    </details>
+    <button type="button" class="btn btn-secondary" id="csv-report-download-btn" style="margin-top: 12px;">Download Report (TXT)</button>
+  `;
+  const downloadBtn = document.getElementById('csv-report-download-btn');
+  if (downloadBtn) {
+    downloadBtn.onclick = () => downloadReportFile(reportText, 'csv-import');
+  }
+  reportContainer.style.display = 'block';
 }
 
 // Download report as text file

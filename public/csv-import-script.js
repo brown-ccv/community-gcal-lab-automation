@@ -154,7 +154,13 @@ async function handleFile(file) {
     currentPreviewData = { file, data };
     
     displayPreview(data);
-    hideAlert();
+    const importable = data.summary?.importableEvents ?? data.summary?.totalEvents ?? 0;
+    const duplicates = data.summary?.duplicateEvents ?? 0;
+    const totalAll = data.summary?.totalEventsAll ?? importable;
+    const message = duplicates > 0
+      ? `Preview ready. Importable: ${importable} of ${totalAll}. Duplicates skipped in preview: ${duplicates}.`
+      : `Preview ready. Importable events: ${importable}.`;
+    showAlert(message, 'success');
     
   } catch (error) {
     showAlert(`Error: ${error.message}`, 'error');
@@ -168,7 +174,7 @@ function displayPreview(data) {
   
   // Update stats
   document.getElementById('totalParticipants').textContent = data.summary.totalParticipants;
-  document.getElementById('totalEvents').textContent = data.summary.totalEvents;
+  document.getElementById('totalEvents').textContent = data.summary.importableEvents ?? data.summary.totalEvents;
   
   // Update event types list
   const eventTypesList = document.getElementById('eventTypesList');
@@ -390,9 +396,12 @@ function showAlert(message, type, persist = false) {
   alertBox.appendChild(messageDiv);
   alertBox.style.display = 'block';
   
-  // Auto-hide after 8 seconds (unless persist is true)
+  // Keep errors visible until manually dismissed. Auto-hide only non-error messages.
   if (!persist) {
-    setTimeout(hideAlert, 8000);
+    const hideDelayMs = type === 'success' ? 15000 : type === 'info' ? 12000 : 0;
+    if (hideDelayMs > 0) {
+      setTimeout(hideAlert, hideDelayMs);
+    }
   }
 }
 
