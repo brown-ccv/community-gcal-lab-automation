@@ -2,7 +2,7 @@
 import dotenv from 'dotenv';
 
 // Load environment variables from .env file
-dotenv.config();
+dotenv.config({ override: true });
 
 // Only set DEMO_MODE if it's not already set via command line or .env
 if (!process.env.DEMO_MODE) {

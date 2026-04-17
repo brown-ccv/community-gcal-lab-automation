@@ -206,18 +206,25 @@ export async function createEvents(auth, { baseDate, title, time, attendeeEmail,
 /**
  * Find event by custom key (stored in extendedProperties)
  */
-async function findEventByKey(calendar, calendarId, eventKey) {
+async function findEventByKey(calendar, calendarId, eventKey, propertyName = 'eventKey') {
   try {
     const response = await calendar.events.list({
       calendarId: calendarId,
-      privateExtendedProperty: `eventKey=${eventKey}`,
+      privateExtendedProperty: `${propertyName}=${eventKey}`,
       maxResults: 1,
       singleEvents: true,
     });
 
     return response.data.items && response.data.items.length > 0 ? response.data.items[0] : null;
   } catch (error) {
-    console.error('Error searching for existing event:', error.message);
+    const statusCode = error?.code || error?.response?.status;
+    // Not Found is a common signal for inaccessible/non-existent calendar IDs.
+    // Return null here to avoid logging the same noisy error for every CSV row.
+    if (statusCode === 404 || /not found/i.test(String(error?.message || ''))) {
+      return null;
+    }
+
+    console.error(`Error searching for existing event in calendar ${calendarId}:`, error.message);
     return null;
   }
 }
@@ -277,28 +284,33 @@ export async function deleteEvents(auth, { baseDate, title, attendeeEmail, calen
 export async function deleteAllDemoEvents(auth, { calendarId = 'primary' } = {}) {
   const calendar = google.calendar({ version: 'v3', auth });
   const results = { deleted: 0, errors: 0, errorDetails: [] };
+  const calendarIds = Array.isArray(calendarId)
+    ? [...new Set(calendarId.map((id) => String(id || '').trim()).filter(Boolean))]
+    : [String(calendarId || 'primary').trim() || 'primary'];
 
   try {
-    // Search for events from both manual entry and CSV import
+    // Search for events from both manual entry and CSV import across all configured calendars.
     const sources = ['gcal-automation-demo', 'csv-import'];
     let allDemoEvents = [];
 
-    for (const source of sources) {
-      const response = await calendar.events.list({
-        calendarId: calendarId,
-        privateExtendedProperty: `source=${source}`,
-        maxResults: 2500, // Google Calendar API max
-        singleEvents: true,
-      });
+    for (const targetCalendarId of calendarIds) {
+      for (const source of sources) {
+        const response = await calendar.events.list({
+          calendarId: targetCalendarId,
+          privateExtendedProperty: `source=${source}`,
+          maxResults: 2500, // Google Calendar API max
+          singleEvents: true,
+        });
 
-      const events = response.data.items || [];
-      
-      // Filter for demo mode events only
-      const demoEvents = events.filter(event => 
-        event.extendedProperties?.private?.demoMode === 'true'
-      );
+        const events = response.data.items || [];
+        
+        // Filter for demo mode events only
+        const demoEvents = events
+          .filter(event => event.extendedProperties?.private?.demoMode === 'true')
+          .map((event) => ({ ...event, _calendarId: targetCalendarId }));
 
-      allDemoEvents = allDemoEvents.concat(demoEvents);
+        allDemoEvents = allDemoEvents.concat(demoEvents);
+      }
     }
 
     console.log(`Found ${allDemoEvents.length} demo events to delete`);
@@ -307,7 +319,7 @@ export async function deleteAllDemoEvents(auth, { calendarId = 'primary' } = {})
     for (const event of allDemoEvents) {
       try {
         await calendar.events.delete({
-          calendarId: calendarId,
+          calendarId: event._calendarId || 'primary',
           eventId: event.id,
           sendUpdates: 'all', // Notify attendees of cancellation
         });
@@ -339,6 +351,9 @@ export async function deleteAllDemoEvents(auth, { calendarId = 'primary' } = {})
 export async function deleteRecentEvents(auth, { hours = 24, calendarId = 'primary' } = {}) {
   const calendar = google.calendar({ version: 'v3', auth });
   const results = { deleted: 0, errors: 0, errorDetails: [], eventsFound: [] };
+  const calendarIds = Array.isArray(calendarId)
+    ? [...new Set(calendarId.map((id) => String(id || '').trim()).filter(Boolean))]
+    : [String(calendarId || 'primary').trim() || 'primary'];
 
   try {
     // Calculate time range
@@ -347,22 +362,28 @@ export async function deleteRecentEvents(auth, { hours = 24, calendarId = 'prima
     
     console.log(`Searching for events created after ${timeMin.toISOString()}`);
 
-    // Get all events in the calendar
-    const response = await calendar.events.list({
-      calendarId: calendarId,
-      timeMin: timeMin.toISOString(),
-      maxResults: 2500,
-      singleEvents: true,
-      orderBy: 'startTime',
-    });
+    let automationEvents = [];
 
-    const events = response.data.items || [];
-    
-    // Filter for events from our automation (both manual and CSV)
-    const automationEvents = events.filter(event => {
-      const source = event.extendedProperties?.private?.source;
-      return source === 'gcal-automation-demo' || source === 'csv-import';
-    });
+    // Collect automation events from all configured calendars.
+    for (const targetCalendarId of calendarIds) {
+      const response = await calendar.events.list({
+        calendarId: targetCalendarId,
+        timeMin: timeMin.toISOString(),
+        maxResults: 2500,
+        singleEvents: true,
+        orderBy: 'startTime',
+      });
+
+      const events = response.data.items || [];
+      const scopedAutomationEvents = events
+        .filter(event => {
+          const source = event.extendedProperties?.private?.source;
+          return source === 'gcal-automation-demo' || source === 'csv-import';
+        })
+        .map((event) => ({ ...event, _calendarId: targetCalendarId }));
+
+      automationEvents = automationEvents.concat(scopedAutomationEvents);
+    }
 
     console.log(`Found ${automationEvents.length} automation events in the last ${hours} hours`);
 
@@ -378,7 +399,7 @@ export async function deleteRecentEvents(auth, { hours = 24, calendarId = 'prima
     for (const event of automationEvents) {
       try {
         await calendar.events.delete({
-          calendarId: calendarId,
+          calendarId: event._calendarId || 'primary',
           eventId: event.id,
           sendUpdates: 'all',
         });
@@ -408,6 +429,77 @@ function buildCSVEventKey(participantId, date, column) {
   return `${participantId}_${datePart}_${column}`;
 }
 
+async function ensureCsvCalendarsAccessible(calendar, reminderCalendarId, retentionCalendarId) {
+  const checks = [
+    ['reminder', reminderCalendarId],
+    ['retention', retentionCalendarId],
+  ];
+
+  for (const [label, id] of checks) {
+    try {
+      await calendar.calendars.get({ calendarId: id });
+    } catch (error) {
+      throw new Error(`Unable to access ${label} calendar (${id}): ${error.message}`);
+    }
+  }
+}
+
+export async function partitionCSVEventsByIdempotency(auth, events, {
+  calendarId = 'primary',
+  reminderCalendarId = null,
+  retentionCalendarId = null,
+} = {}) {
+  const calendar = google.calendar({ version: 'v3', auth });
+  const normalizedReminderCalendarId = String(reminderCalendarId || '').trim();
+  const normalizedRetentionCalendarId = String(retentionCalendarId || '').trim();
+  const normalizedDefaultCalendarId = String(calendarId || 'primary').trim();
+
+  if (!normalizedReminderCalendarId || !normalizedRetentionCalendarId) {
+    throw new Error('REMINDER_CALENDAR_ID and RETENTION_CALENDAR_ID must both be configured for CSV previews/imports.');
+  }
+
+  await ensureCsvCalendarsAccessible(calendar, normalizedReminderCalendarId, normalizedRetentionCalendarId);
+
+  const newEvents = [];
+  const duplicateEvents = [];
+
+  for (const event of events) {
+    let targetCalendarId;
+    if (event.calendarType === 'reminder') {
+      targetCalendarId = normalizedReminderCalendarId || normalizedDefaultCalendarId;
+    } else if (event.calendarType === 'retention') {
+      targetCalendarId = normalizedRetentionCalendarId || normalizedDefaultCalendarId;
+    } else {
+      targetCalendarId = normalizedDefaultCalendarId;
+    }
+
+    const { adjustedDate: eventDate } = shiftWeekendToFriday(event.date);
+    const eventKey = buildCSVEventKey(event.participantId, eventDate, event.column);
+    const existingEvent = await findEventByKey(calendar, targetCalendarId, eventKey, 'idempotencyKey');
+
+    if (existingEvent) {
+      duplicateEvents.push({
+        ...event,
+        date: eventDate,
+        targetCalendarId,
+        existingEventId: existingEvent.id,
+      });
+      continue;
+    }
+
+    newEvents.push({
+      ...event,
+      date: eventDate,
+      targetCalendarId,
+    });
+  }
+
+  return {
+    newEvents,
+    duplicateEvents,
+  };
+}
+
 /**
  * Create calendar events from CSV data
  * @param {Object} auth - Google OAuth2 client
@@ -433,6 +525,16 @@ export async function createEventsFromCSV(auth, events, {
   attendeeEmail = null,
 }) {
   const calendar = google.calendar({ version: 'v3', auth });
+  const normalizedReminderCalendarId = String(reminderCalendarId || '').trim();
+  const normalizedRetentionCalendarId = String(retentionCalendarId || '').trim();
+  const normalizedDefaultCalendarId = String(calendarId || 'primary').trim();
+
+  if (!normalizedReminderCalendarId || !normalizedRetentionCalendarId) {
+    throw new Error('REMINDER_CALENDAR_ID and RETENTION_CALENDAR_ID must both be configured for CSV imports.');
+  }
+
+  await ensureCsvCalendarsAccessible(calendar, normalizedReminderCalendarId, normalizedRetentionCalendarId);
+
   const results = {
     created: 0,
     skipped: 0,
@@ -449,12 +551,12 @@ export async function createEventsFromCSV(auth, events, {
     // Determine which calendar to use based on event type
     let targetCalendarId;
     if (event.calendarType === 'reminder') {
-      targetCalendarId = reminderCalendarId || calendarId;
+      targetCalendarId = normalizedReminderCalendarId || normalizedDefaultCalendarId;
     } else if (event.calendarType === 'retention') {
-      targetCalendarId = retentionCalendarId || calendarId;
+      targetCalendarId = normalizedRetentionCalendarId || normalizedDefaultCalendarId;
     } else {
       // Fallback to default calendar for unknown types
-      targetCalendarId = calendarId;
+      targetCalendarId = normalizedDefaultCalendarId;
     }
 
     const { adjustedDate: eventDate, wasShifted, originalDate } = shiftWeekendToFriday(event.date);
@@ -462,7 +564,7 @@ export async function createEventsFromCSV(auth, events, {
     
     try {
       // Check if event already exists (idempotency)
-      const existingEvent = await findEventByKey(calendar, targetCalendarId, eventKey);
+      const existingEvent = await findEventByKey(calendar, targetCalendarId, eventKey, 'idempotencyKey');
       
       if (existingEvent) {
         results.skipped++;

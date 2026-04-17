@@ -4,9 +4,6 @@ import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { verifyDomain } from '../middleware/auth.js';
 
-const AUTH_CLIENT_ID = process.env.AUTH_CLIENT_ID;
-const AUTH_CLIENT_SECRET = process.env.AUTH_CLIENT_SECRET;
-const AUTH_CALLBACK_URL = process.env.AUTH_CALLBACK_URL || 'http://localhost:3000/auth/google/callback';
 let isGoogleStrategyConfigured = false;
 
 function requireGoogleStrategy(req, res, next) {
@@ -21,7 +18,18 @@ function requireGoogleStrategy(req, res, next) {
  * This is used ONLY for authentication, not for calendar access
  */
 export function configurePassport() {
-  if (!AUTH_CLIENT_ID || !AUTH_CLIENT_SECRET) {
+  const authMode = (process.env.AUTH_MODE || 'oauth').trim().toLowerCase();
+  const authClientId = process.env.AUTH_CLIENT_ID;
+  const authClientSecret = process.env.AUTH_CLIENT_SECRET;
+  const authCallbackUrl = process.env.AUTH_CALLBACK_URL || 'http://localhost:3000/auth/google/callback';
+
+  if (authMode === 'proxy') {
+    isGoogleStrategyConfigured = false;
+    console.log('ℹ️  AUTH_MODE=proxy: skipping app OAuth strategy setup.');
+    return;
+  }
+
+  if (!authClientId || !authClientSecret) {
     console.warn('⚠️  AUTH_CLIENT_ID and AUTH_CLIENT_SECRET not set. Authentication will not work.');
     console.warn('   Set BYPASS_AUTH=true for development without authentication.');
     isGoogleStrategyConfigured = false;
@@ -31,9 +39,9 @@ export function configurePassport() {
   passport.use(
     new GoogleStrategy(
       {
-        clientID: AUTH_CLIENT_ID,
-        clientSecret: AUTH_CLIENT_SECRET,
-        callbackURL: AUTH_CALLBACK_URL,
+        clientID: authClientId,
+        clientSecret: authClientSecret,
+        callbackURL: authCallbackUrl,
         scope: ['profile', 'email'], // Only request profile and email, NOT calendar access
       },
       (accessToken, refreshToken, profile, done) => {

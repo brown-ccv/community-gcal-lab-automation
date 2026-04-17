@@ -6,13 +6,13 @@ import { fileURLToPath } from 'url';
 import { google } from 'googleapis';
 import multer from 'multer';
 import dotenv from 'dotenv';
-import { createEvents, deleteEvents, deleteAllDemoEvents, createEventsFromCSV, deleteRecentEvents } from './calendar.js';
+import { createEvents, deleteEvents, deleteAllDemoEvents, createEventsFromCSV, deleteRecentEvents, partitionCSVEventsByIdempotency } from './calendar.js';
 import { parseCSVFromBuffer, getEventSummary } from './csvParser.js';
 import { extractProxyIdentity, getAuthenticatedEmail, requireAuth, requireGroupMember, isAuthBypassed } from './middleware/auth.js';
 import { configurePassport, createAuthRoutes } from './routes/auth.js';
 
 // Load environment variables
-dotenv.config();
+dotenv.config({ override: true });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -113,16 +113,52 @@ function getServiceAccountCredentials() {
     return null;
   }
 
-  try {
-    const parsed = JSON.parse(raw);
-    if (!parsed.client_email || !parsed.private_key) {
+  const parseCandidate = (candidate) => {
+    if (!candidate) {
       return null;
     }
-    return parsed;
-  } catch (error) {
-    console.error('Failed to parse service account credentials JSON:', error.message);
-    return null;
+
+    try {
+      const parsed = JSON.parse(candidate);
+      if (!parsed.client_email || !parsed.private_key) {
+        return null;
+      }
+
+      return parsed;
+    } catch {
+      return null;
+    }
+  };
+
+  const direct = parseCandidate(raw);
+  if (direct) {
+    return direct;
   }
+
+  // Support providing the value as base64-encoded JSON to avoid shell quoting issues.
+  const decoded = Buffer.from(raw, 'base64').toString('utf8');
+  const fromBase64 = parseCandidate(decoded);
+  if (fromBase64) {
+    return fromBase64;
+  }
+
+  console.error('Failed to parse service account credentials JSON: value is neither valid JSON nor valid base64-encoded JSON with client_email/private_key.');
+  console.error('Hint: use strict JSON with double-quoted keys, or pass base64-encoded JSON in GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON.');
+  return null;
+}
+
+function getCalendarCredentialSource() {
+  const calendarRaw = String(process.env.GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON || '').trim();
+  if (calendarRaw) {
+    return 'GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON';
+  }
+
+  const adminRaw = String(process.env.GOOGLE_ADMIN_SERVICE_ACCOUNT_JSON || '').trim();
+  if (adminRaw) {
+    return 'GOOGLE_ADMIN_SERVICE_ACCOUNT_JSON';
+  }
+
+  return 'none';
 }
 
 function isCalendarConfigured() {
@@ -305,8 +341,14 @@ app.post('/clear-demo-events', requireProtectedAccess, async (req, res) => {
   
   try {
     const auth = getCalendarAuthClient();
+    const configuredCalendars = [
+      'primary',
+      String(process.env.REMINDER_CALENDAR_ID || '').trim(),
+      String(process.env.RETENTION_CALENDAR_ID || '').trim(),
+    ].filter(Boolean);
+
     const results = await deleteAllDemoEvents(auth, {
-      calendarId: 'primary',
+      calendarId: configuredCalendars,
     });
     
     res.json({ 
@@ -322,20 +364,70 @@ app.post('/clear-demo-events', requireProtectedAccess, async (req, res) => {
 });
 
 // CSV Import - Preview endpoint (PROTECTED)
-app.post('/api/csv/preview', requireProtectedAccess, upload.single('csvFile'), (req, res) => {
+app.post('/api/csv/preview', requireProtectedAccess, upload.single('csvFile'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
     const events = parseCSVFromBuffer(req.file.buffer);
-    const summary = getEventSummary(events);
+    const fullSummary = getEventSummary(events);
 
+    // In live mode, pre-scan existing idempotency keys so preview focuses on importable events.
+    if (!DEMO_MODE) {
+      const auth = getCalendarAuthClient();
+      const reminderCalendarId = String(process.env.REMINDER_CALENDAR_ID || '').trim();
+      const retentionCalendarId = String(process.env.RETENTION_CALENDAR_ID || '').trim();
+
+      if (!reminderCalendarId || !retentionCalendarId) {
+        return res.status(500).json({
+          error: 'REMINDER_CALENDAR_ID and RETENTION_CALENDAR_ID must both be set for CSV previews.',
+        });
+      }
+
+      const { newEvents, duplicateEvents } = await partitionCSVEventsByIdempotency(auth, events, {
+        reminderCalendarId,
+        retentionCalendarId,
+      });
+
+      const duplicateParticipants = duplicateEvents.reduce((acc, event) => {
+        const key = String(event.participantId || 'unknown');
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+
+      const summary = getEventSummary(newEvents);
+
+      return res.json({
+        success: true,
+        summary: {
+          ...summary,
+          importableEvents: summary.totalEvents,
+          duplicateEvents: duplicateEvents.length,
+          duplicateParticipants,
+          totalEventsAll: fullSummary.totalEvents,
+          totalParticipantsAll: fullSummary.totalParticipants,
+        },
+        sampleEvents: newEvents.slice(0, 10),
+        events: newEvents,
+        duplicateSampleEvents: duplicateEvents.slice(0, 10),
+      });
+    }
+
+    // Demo mode preview keeps original behavior (all parsed events).
     res.json({
       success: true,
-      summary,
-      sampleEvents: events.slice(0, 10), // Send first 10 events as preview
-      events, // Send all events for report generation
+      summary: {
+        ...fullSummary,
+        importableEvents: fullSummary.totalEvents,
+        duplicateEvents: 0,
+        duplicateParticipants: {},
+        totalEventsAll: fullSummary.totalEvents,
+        totalParticipantsAll: fullSummary.totalParticipants,
+      },
+      sampleEvents: events.slice(0, 10),
+      events,
+      duplicateSampleEvents: [],
     });
   } catch (error) {
     console.error('Error previewing CSV:', error);
@@ -368,14 +460,16 @@ app.post('/api/csv/import', requireProtectedAccess, upload.single('csvFile'), as
     const auth = getCalendarAuthClient();
 
     // Get calendar configuration from environment
-    const reminderCalendarId = process.env.REMINDER_CALENDAR_ID;
-    const retentionCalendarId = process.env.RETENTION_CALENDAR_ID;
+    const reminderCalendarId = String(process.env.REMINDER_CALENDAR_ID || '').trim();
+    const retentionCalendarId = String(process.env.RETENTION_CALENDAR_ID || '').trim();
     const enableAttendees = process.env.ENABLE_ATTENDEES === 'true';
     const attendeeEmail = process.env.PRODUCTION_ATTENDEE_EMAIL;
 
     // Validate calendar configuration
     if (!reminderCalendarId || !retentionCalendarId) {
-      console.warn('⚠️  REMINDER_CALENDAR_ID or RETENTION_CALENDAR_ID not set. Using default calendar.');
+      return res.status(500).json({
+        error: 'REMINDER_CALENDAR_ID and RETENTION_CALENDAR_ID must both be set for CSV imports.',
+      });
     }
 
     if (enableAttendees && !attendeeEmail) {
@@ -413,7 +507,16 @@ app.post('/api/delete-recent', requireProtectedAccess, async (req, res) => {
 
     const hours = parseInt(req.body.hours) || 24;
     const auth = getCalendarAuthClient();
-    const results = await deleteRecentEvents(auth, { hours });
+    const configuredCalendars = [
+      'primary',
+      String(process.env.REMINDER_CALENDAR_ID || '').trim(),
+      String(process.env.RETENTION_CALENDAR_ID || '').trim(),
+    ].filter(Boolean);
+
+    const results = await deleteRecentEvents(auth, {
+      hours,
+      calendarId: configuredCalendars,
+    });
 
     res.json({
       success: true,
@@ -439,6 +542,7 @@ app.get('/health', (req, res) => {
 app.listen(PORT, () => {
   console.log(`\n✅ Server running at http://localhost:${PORT}`);
   console.log(`\nOpen your browser and visit: http://localhost:${PORT}\n`);
+  console.log(`Calendar credential source: ${getCalendarCredentialSource()}`);
 
   if (!DEMO_MODE && !isCalendarConfigured()) {
     console.log('⚠️  Calendar service account credentials are not configured. Calendar writes will fail until GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON (or GOOGLE_ADMIN_SERVICE_ACCOUNT_JSON) is set.\n');
