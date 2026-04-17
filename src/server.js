@@ -4,7 +4,6 @@ import passport from 'passport';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { google } from 'googleapis';
-import fs from 'fs';
 import multer from 'multer';
 import dotenv from 'dotenv';
 import { createEvents, deleteEvents, deleteAllDemoEvents, createEventsFromCSV, deleteRecentEvents } from './calendar.js';
@@ -25,15 +24,8 @@ const BYPASS_AUTH = process.env.BYPASS_AUTH === 'true';
 const AUTH_MODE = (process.env.AUTH_MODE || 'oauth').trim().toLowerCase();
 
 // Configuration
-const SCOPES = ['https://www.googleapis.com/auth/calendar'];
-const TOKEN_PATH = path.join(__dirname, '..', 'token.json');
-// Check for credentials in Render secret files location first, then local
-const CREDENTIALS_PATH = fs.existsSync('/etc/secrets/credentials.json') 
-  ? '/etc/secrets/credentials.json'
-  : path.join(__dirname, '..', 'credentials.json');
-const REDIRECT_URI = process.env.REDIRECT_URI || 'http://localhost:3000/oauth2callback';
+const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar';
 
-console.log('Using credentials from:', CREDENTIALS_PATH);
 console.log('Demo mode:', DEMO_MODE ? 'ENABLED (no real API calls)' : 'DISABLED (real calendar events)');
 console.log('Auth bypass:', BYPASS_AUTH ? 'ENABLED (no authentication required)' : 'DISABLED (authentication required)');
 console.log('Auth mode:', AUTH_MODE);
@@ -113,42 +105,49 @@ const upload = multer({
   }
 });
 
-// OAuth2 client setup
-let oAuth2Client = null;
+let calendarAuthClient = null;
 
-function getOAuth2Client() {
-  if (!fs.existsSync(CREDENTIALS_PATH)) {
-    throw new Error('credentials.json not found. Please add it to the project root.');
+function getServiceAccountCredentials() {
+  const raw = process.env.GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_ADMIN_SERVICE_ACCOUNT_JSON || '';
+  if (!raw) {
+    return null;
   }
-  
+
   try {
-    const fileContent = fs.readFileSync(CREDENTIALS_PATH, 'utf8');
-    console.log('Credentials file length:', fileContent.length);
-    console.log('First 50 chars:', fileContent.substring(0, 50));
-    
-    const credentials = JSON.parse(fileContent.trim());
-    const { client_secret, client_id } = credentials.installed || credentials.web;
-    
-    if (!client_id || !client_secret) {
-      throw new Error('Invalid credentials.json format: missing client_id or client_secret');
+    const parsed = JSON.parse(raw);
+    if (!parsed.client_email || !parsed.private_key) {
+      return null;
     }
-    
-    return new google.auth.OAuth2(client_id, client_secret, REDIRECT_URI);
+    return parsed;
   } catch (error) {
-    console.error('Error reading credentials.json:', error);
-    throw new Error(`Failed to parse credentials.json: ${error.message}`);
+    console.error('Failed to parse service account credentials JSON:', error.message);
+    return null;
   }
 }
 
-function isAuthorized() {
-  return fs.existsSync(TOKEN_PATH);
+function isCalendarConfigured() {
+  return Boolean(getServiceAccountCredentials());
 }
 
-function getAuthorizedClient() {
-  const client = getOAuth2Client();
-  const token = JSON.parse(fs.readFileSync(TOKEN_PATH, 'utf8'));
-  client.setCredentials(token);
-  return client;
+function getCalendarAuthClient() {
+  if (calendarAuthClient) {
+    return calendarAuthClient;
+  }
+
+  const credentials = getServiceAccountCredentials();
+  if (!credentials) {
+    throw new Error('Calendar service account credentials are not configured. Set GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON or GOOGLE_ADMIN_SERVICE_ACCOUNT_JSON.');
+  }
+
+  const subject = (process.env.GOOGLE_CALENDAR_IMPERSONATE_USER || '').trim() || undefined;
+  calendarAuthClient = new google.auth.JWT({
+    email: credentials.client_email,
+    key: String(credentials.private_key).replace(/\\n/g, '\n'),
+    scopes: [CALENDAR_SCOPE],
+    subject,
+  });
+
+  return calendarAuthClient;
 }
 
 // Authentication routes
@@ -164,124 +163,30 @@ app.get('/api/demo-mode', (req, res) => {
 
 // Home page (PROTECTED)
 app.get('/', requireProtectedAccess, (req, res) => {
-  // Check if credentials.json exists (for calendar API, not user auth)
-  if (!DEMO_MODE && !fs.existsSync(CREDENTIALS_PATH)) {
-    return res.sendFile(path.join(__dirname, '..', 'public', 'setup-required.html'));
-  }
-  
-  // Check calendar API authorization (not user auth)
-  if (!DEMO_MODE && !isAuthorized()) {
-    return res.redirect('/authorize');
-  }
-  
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
 // Manual entry deep link (PROTECTED)
 app.get('/manual-entry', requireProtectedAccess, (req, res) => {
-  if (!DEMO_MODE && !fs.existsSync(CREDENTIALS_PATH)) {
-    return res.sendFile(path.join(__dirname, '..', 'public', 'setup-required.html'));
-  }
-
-  if (!DEMO_MODE && !isAuthorized()) {
-    return res.redirect('/authorize');
-  }
-
   res.redirect('/?mode=manual');
 });
 
-// Authorization flow
+// Legacy route retained for compatibility; calendar OAuth flow was removed.
 app.get('/authorize', (req, res) => {
-  // Check if credentials.json exists
-  if (!fs.existsSync(CREDENTIALS_PATH)) {
-    return res.sendFile(path.join(__dirname, '..', 'public', 'setup-required.html'));
-  }
-  
-  try {
-    const client = getOAuth2Client();
-    const authUrl = client.generateAuthUrl({
-      access_type: 'offline',
-      scope: SCOPES,
-    });
-    res.redirect(authUrl);
-  } catch (error) {
-    res.status(500).send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Authorization Error</title>
-        <link rel="stylesheet" href="/styles.css">
-        <style>
-          .error-container { max-width: 600px; margin: 40px auto; padding: 20px; }
-          .error { background: #fee; border: 2px solid #fcc; padding: 20px; border-radius: 8px; }
-          h1 { color: #c00; }
-        </style>
-      </head>
-      <body>
-        <div class="error-container">
-          <div class="error">
-            <h1>⚠️ Authorization Error</h1>
-            <p><strong>Error:</strong> ${error.message}</p>
-            <p>Please check the setup guide in <code>docs/SETUP_GUIDE.md</code> for troubleshooting steps.</p>
-            <p style="margin-top: 20px;">
-              <a href="/" style="color: var(--primary-color);">← Back to home</a>
-            </p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `);
-  }
+  res.status(410).json({
+    error: 'Calendar OAuth flow is no longer used. Configure service account credentials and retry.',
+  });
 });
 
-// OAuth callback
+// Legacy route retained for compatibility; calendar OAuth flow was removed.
 app.get('/oauth2callback', async (req, res) => {
-  const code = req.query.code;
-  
-  if (!code) {
-    return res.status(400).send('No authorization code received.');
-  }
-  
-  try {
-    const client = getOAuth2Client();
-    const { tokens } = await client.getToken(code);
-    client.setCredentials(tokens);
-    
-    // Save token
-    fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens));
-    
-    res.redirect('/?authorized=true');
-  } catch (error) {
-    console.error('Error retrieving access token:', error);
-    res.status(500).send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Authorization Error</title>
-        <style>
-          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 40px; max-width: 600px; margin: 0 auto; }
-          .error { background: #fee; border: 1px solid #fcc; padding: 20px; border-radius: 8px; }
-          h1 { color: #c00; }
-        </style>
-      </head>
-      <body>
-        <div class="error">
-          <h1>❌ Authorization Failed</h1>
-          <p>${error.message}</p>
-          <p><a href="/authorize">Try again</a></p>
-        </div>
-      </body>
-      </html>
-    `);
-  }
+  res.status(410).json({
+    error: 'Calendar OAuth callback is deprecated. Service account auth is required.',
+  });
 });
 
 // Create events endpoint (PROTECTED)
 app.post('/create-events', requireProtectedAccess, async (req, res) => {
-  if (!DEMO_MODE && !isAuthorized()) {
-    return res.redirect('/authorize');
-  }
-  
   const { baseDate, title, time, attendeeEmail, demoMode } = req.body;
   
   // Validation
@@ -321,7 +226,7 @@ app.post('/create-events', requireProtectedAccess, async (req, res) => {
   }
   
   try {
-    const auth = getAuthorizedClient();
+    const auth = getCalendarAuthClient();
     const results = await createEvents(auth, {
       baseDate,
       title,
@@ -341,10 +246,6 @@ app.post('/create-events', requireProtectedAccess, async (req, res) => {
 
 // Delete events endpoint (PROTECTED)
 app.post('/delete-events', requireProtectedAccess, async (req, res) => {
-  if (!DEMO_MODE && !isAuthorized()) {
-    return res.redirect('/authorize');
-  }
-  
   const { baseDate, title, attendeeEmail } = req.body;
   
   if (!baseDate || !title || !attendeeEmail) {
@@ -374,7 +275,7 @@ app.post('/delete-events', requireProtectedAccess, async (req, res) => {
   }
   
   try {
-    const auth = getAuthorizedClient();
+    const auth = getCalendarAuthClient();
     const results = await deleteEvents(auth, {
       baseDate,
       title,
@@ -391,10 +292,6 @@ app.post('/delete-events', requireProtectedAccess, async (req, res) => {
 
 // Clear all demo events endpoint (PROTECTED)
 app.post('/clear-demo-events', requireProtectedAccess, async (req, res) => {
-  if (!DEMO_MODE && !isAuthorized()) {
-    return res.redirect('/authorize');
-  }
-
   if (DEMO_MODE) {
     return res.json({
       success: true,
@@ -407,7 +304,7 @@ app.post('/clear-demo-events', requireProtectedAccess, async (req, res) => {
   }
   
   try {
-    const auth = getAuthorizedClient();
+    const auth = getCalendarAuthClient();
     const results = await deleteAllDemoEvents(auth, {
       calendarId: 'primary',
     });
@@ -466,13 +363,9 @@ app.post('/api/csv/import', requireProtectedAccess, upload.single('csvFile'), as
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    if (!isAuthorized()) {
-      return res.status(401).json({ error: 'Not authorized. Please authorize first.' });
-    }
-
     const demoMode = req.body.demoMode === 'true';
     const events = parseCSVFromBuffer(req.file.buffer);
-    const auth = getAuthorizedClient();
+    const auth = getCalendarAuthClient();
 
     // Get calendar configuration from environment
     const reminderCalendarId = process.env.REMINDER_CALENDAR_ID;
@@ -518,12 +411,8 @@ app.post('/api/delete-recent', requireProtectedAccess, async (req, res) => {
       });
     }
 
-    if (!isAuthorized()) {
-      return res.status(401).json({ error: 'Not authorized' });
-    }
-
     const hours = parseInt(req.body.hours) || 24;
-    const auth = getAuthorizedClient();
+    const auth = getCalendarAuthClient();
     const results = await deleteRecentEvents(auth, { hours });
 
     res.json({
@@ -540,7 +429,7 @@ app.post('/api/delete-recent', requireProtectedAccess, async (req, res) => {
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
-    authorized: isAuthorized(),
+    calendarConfigured: isCalendarConfigured(),
     demoMode: DEMO_MODE,
     authBypass: BYPASS_AUTH,
   });
@@ -550,8 +439,8 @@ app.get('/health', (req, res) => {
 app.listen(PORT, () => {
   console.log(`\n✅ Server running at http://localhost:${PORT}`);
   console.log(`\nOpen your browser and visit: http://localhost:${PORT}\n`);
-  
-  if (!isAuthorized()) {
-    console.log('⚠️  First-time setup: You will be redirected to authorize with Google Calendar.\n');
+
+  if (!DEMO_MODE && !isCalendarConfigured()) {
+    console.log('⚠️  Calendar service account credentials are not configured. Calendar writes will fail until GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON (or GOOGLE_ADMIN_SERVICE_ACCOUNT_JSON) is set.\n');
   }
 });

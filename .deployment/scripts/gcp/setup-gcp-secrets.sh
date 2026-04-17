@@ -81,25 +81,33 @@ create_secret() {
 }
 
 # Main setup
-echo "This script will guide you through setting up all required secrets."
+echo "This script will guide you through setting up required secrets."
 echo "You will need values from:"
-echo "  - Google Cloud Console (OAuth credentials)"
+echo "  - Google Cloud Console (service account + optional OAuth credentials)"
 echo "  - Google Calendar (Calendar IDs)"
 echo "  - Random generated values (session secret)"
 echo ""
 read -p "Press Enter to continue..."
 
-# 1. AUTH_CLIENT_ID
-create_secret \
-  "auth-client-id" \
-  "Google OAuth 2.0 Client ID for web application" \
-  "Get this from Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client ID"
+# Optional OAuth app secrets (only needed when AUTH_MODE=oauth)
+echo ""
+echo "================================================================"
+echo "Optional: auth-client-id + auth-client-secret"
+echo "Description: Needed only if running app-level OAuth login (AUTH_MODE=oauth)"
+echo "================================================================"
+read -p "Do you want to configure optional OAuth app secrets now? (y/n) " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+  create_secret \
+    "auth-client-id" \
+    "Google OAuth 2.0 Client ID for web application" \
+    "Get this from Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client ID"
 
-# 2. AUTH_CLIENT_SECRET
-create_secret \
-  "auth-client-secret" \
-  "Google OAuth 2.0 Client Secret" \
-  "Get this from Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client ID"
+  create_secret \
+    "auth-client-secret" \
+    "Google OAuth 2.0 Client Secret" \
+    "Get this from Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client ID"
+fi
 
 # 3. SESSION_SECRET
 echo ""
@@ -181,9 +189,23 @@ if ! gcloud iam service-accounts describe "${SA_EMAIL}" --project="${PROJECT_ID}
 fi
 
 # Grant access to all secrets
-SECRETS=("auth-client-id" "auth-client-secret" "session-secret" "reminder-calendar-id" "retention-calendar-id")
+SECRETS=("session-secret" "reminder-calendar-id" "retention-calendar-id")
+
+# OAuth secrets are optional and granted only if present.
+OPTIONAL_OAUTH_SECRETS=("auth-client-id" "auth-client-secret")
 
 for SECRET in "${SECRETS[@]}"; do
+  if gcloud secrets describe "${SECRET}" --project="${PROJECT_ID}" &>/dev/null; then
+    echo "  Granting access to ${SECRET}..."
+    gcloud secrets add-iam-policy-binding "${SECRET}" \
+      --member="serviceAccount:${SA_EMAIL}" \
+      --role="roles/secretmanager.secretAccessor" \
+      --project="${PROJECT_ID}" \
+      --quiet
+  fi
+done
+
+for SECRET in "${OPTIONAL_OAUTH_SECRETS[@]}"; do
   if gcloud secrets describe "${SECRET}" --project="${PROJECT_ID}" &>/dev/null; then
     echo "  Granting access to ${SECRET}..."
     gcloud secrets add-iam-policy-binding "${SECRET}" \

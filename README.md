@@ -12,7 +12,7 @@ Automated creation of follow-up check-in calendar events for lab participants.
 
 - **Batch event creation**: Creates multiple follow-up check-ins (1 day, 10 day, 45 day) from a single base date
 - **CSV bulk import**: Upload FileMaker exports to create events for multiple participants at once
-- **OAuth2 authentication**: Secure Google Calendar API access
+- **Service-account calendar access**: Server-side Google Calendar API access without per-user calendar OAuth
 - **Idempotent**: Won't create duplicate events if run multiple times
 - **Easy cleanup**: Delete test events with a simple command
 - **Timezone aware**: Uses America/New_York timezone
@@ -38,26 +38,15 @@ Follow these steps to enable API access:
    - Go to "APIs & Services" → "Library"
    - Search for "Google Calendar API"
    - Click "Enable"
-4. Create OAuth2 credentials:
-   - Go to "APIs & Services" → "Credentials"
-   - Click "Create Credentials" → "OAuth client ID"
-   - Choose **"Desktop app"** as application type
-   - Name it (e.g., "GCal Automation")
-   - Click "Create"
-5. Download the JSON file
-6. Rename it to `credentials.json` and place it in the project root directory
+4. Create or reuse a **service account JSON key** with Calendar API access
+5. Store that JSON in `GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON` (or `GOOGLE_ADMIN_SERVICE_ACCOUNT_JSON`)
+6. Share the target Google Calendar with the service account email as "Make changes to events"
 
 For detailed Google API setup instructions, see `docs/SETUP_GUIDE.md`.
 
-### 3. First-time authorization
+### 3. Calendar authorization model
 
-On the first run, the script will:
-1. Open a browser authorization URL
-2. Ask you to log in with your Google account
-3. Request permission to manage your calendar
-4. Provide an authorization code to paste back into the terminal
-
-The access token will be saved to `token.json` for future runs.
+Calendar writes happen through the configured service account identity. There is no per-user calendar OAuth/consent step in proxy-mode deployments.
 
 ## Usage
 
@@ -65,7 +54,7 @@ The access token will be saved to `token.json` for future runs.
 
 **Start the web server:**
 
-For **real calendar event creation** (requires credentials.json):
+For **real calendar event creation** (requires service account JSON env secret):
 ```bash
 npm start
 ```
