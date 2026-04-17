@@ -354,36 +354,50 @@ export async function deleteRecentEvents(auth, { hours = 24, calendarId = 'prima
   const calendarIds = Array.isArray(calendarId)
     ? [...new Set(calendarId.map((id) => String(id || '').trim()).filter(Boolean))]
     : [String(calendarId || 'primary').trim() || 'primary'];
+  const sources = ['gcal-automation-demo', 'csv-import'];
 
   try {
     // Calculate time range
     const now = new Date();
-    const timeMin = new Date(now.getTime() - hours * 60 * 60 * 1000);
+    const createdAfter = new Date(now.getTime() - hours * 60 * 60 * 1000);
     
-    console.log(`Searching for events created after ${timeMin.toISOString()}`);
+    console.log(`Searching for events created after ${createdAfter.toISOString()}`);
 
     let automationEvents = [];
 
-    // Collect automation events from all configured calendars.
+    // Collect automation events by source from all configured calendars,
+    // then filter by event creation timestamp.
     for (const targetCalendarId of calendarIds) {
-      const response = await calendar.events.list({
-        calendarId: targetCalendarId,
-        timeMin: timeMin.toISOString(),
-        maxResults: 2500,
-        singleEvents: true,
-        orderBy: 'startTime',
-      });
+      for (const source of sources) {
+        const response = await calendar.events.list({
+          calendarId: targetCalendarId,
+          privateExtendedProperty: `source=${source}`,
+          maxResults: 2500,
+          singleEvents: true,
+        });
 
-      const events = response.data.items || [];
-      const scopedAutomationEvents = events
-        .filter(event => {
-          const source = event.extendedProperties?.private?.source;
-          return source === 'gcal-automation-demo' || source === 'csv-import';
-        })
-        .map((event) => ({ ...event, _calendarId: targetCalendarId }));
+        const events = response.data.items || [];
+        const scopedAutomationEvents = events
+          .filter((event) => {
+            const createdAt = event.created ? new Date(event.created) : null;
+            return createdAt && !Number.isNaN(createdAt.valueOf()) && createdAt >= createdAfter;
+          })
+          .map((event) => ({ ...event, _calendarId: targetCalendarId }));
 
-      automationEvents = automationEvents.concat(scopedAutomationEvents);
+        automationEvents = automationEvents.concat(scopedAutomationEvents);
+      }
     }
+
+    // De-duplicate in case API filters overlap unexpectedly.
+    const seen = new Set();
+    automationEvents = automationEvents.filter((event) => {
+      const key = `${event._calendarId || 'primary'}:${event.id}`;
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
 
     console.log(`Found ${automationEvents.length} automation events in the last ${hours} hours`);
 

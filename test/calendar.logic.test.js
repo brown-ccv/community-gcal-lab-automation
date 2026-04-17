@@ -194,20 +194,30 @@ test('deleteRecentEvents scans all configured calendars and deletes from matchin
   const originalCalendarFactory = google.calendar;
   const listCalls = [];
   const deleteCalls = [];
+  const recentCreated = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const staleCreated = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
 
   const calendar = {
     events: {
       list: async (params) => {
         listCalls.push(params);
 
-        if (params.calendarId === 'calendar-reminder') {
+        if (params.calendarId === 'calendar-reminder' && params.privateExtendedProperty === 'source=csv-import') {
           return {
             data: {
               items: [
                 {
                   id: 'event-reminder-1',
                   summary: 'Reminder event',
+                  created: recentCreated,
                   start: { dateTime: '2026-04-17T09:00:00Z' },
+                  extendedProperties: { private: { source: 'csv-import' } },
+                },
+                {
+                  id: 'event-reminder-old',
+                  summary: 'Old reminder event',
+                  created: staleCreated,
+                  start: { dateTime: '2026-04-10T09:00:00Z' },
                   extendedProperties: { private: { source: 'csv-import' } },
                 },
               ],
@@ -215,13 +225,14 @@ test('deleteRecentEvents scans all configured calendars and deletes from matchin
           };
         }
 
-        if (params.calendarId === 'calendar-retention') {
+        if (params.calendarId === 'calendar-retention' && params.privateExtendedProperty === 'source=gcal-automation-demo') {
           return {
             data: {
               items: [
                 {
                   id: 'event-retention-1',
                   summary: 'Retention event',
+                  created: recentCreated,
                   start: { date: '2026-04-17' },
                   extendedProperties: { private: { source: 'gcal-automation-demo' } },
                 },
@@ -246,7 +257,11 @@ test('deleteRecentEvents scans all configured calendars and deletes from matchin
     calendarId: ['calendar-reminder', 'calendar-retention'],
   });
 
-  assert.equal(listCalls.length, 2);
+  assert.equal(listCalls.length, 4);
+  assert.equal(
+    listCalls.every((call) => String(call.privateExtendedProperty || '').startsWith('source=')),
+    true
+  );
   assert.equal(results.deleted, 2);
   assert.deepEqual(
     deleteCalls.map((call) => `${call.calendarId}:${call.eventId}`).sort(),
