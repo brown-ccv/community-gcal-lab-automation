@@ -188,6 +188,17 @@ jobs:
           tags: |
             ${{ env.GCP_REGION }}-docker.pkg.dev/${{ needs.prepare.outputs.project-id }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:${{ github.sha }}
             ${{ env.GCP_REGION }}-docker.pkg.dev/${{ needs.prepare.outputs.project-id }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:latest
+
+      - name: 🔓 Select service access mode
+        id: access-mode
+        run: |
+          if [ "${{ github.event.inputs.environment }}" = "staging" ]; then
+            echo "flag=--allow-unauthenticated" >> "$GITHUB_OUTPUT"
+            echo "label=public (unauthenticated allowed)" >> "$GITHUB_OUTPUT"
+          else
+            echo "flag=--no-allow-unauthenticated" >> "$GITHUB_OUTPUT"
+            echo "label=private (invoker required)" >> "$GITHUB_OUTPUT"
+          fi
           
       - name: 🚀 Deploy to Cloud Run
         id: deploy
@@ -198,7 +209,7 @@ jobs:
           image: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ needs.prepare.outputs.project-id }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:${{ github.sha }}
           flags: |
             --service-account=${{ needs.prepare.outputs.service-account }}
-            --no-allow-unauthenticated
+            ${{ steps.access-mode.outputs.flag }}
             --port=8080
             --cpu=1
             --memory=512Mi
@@ -272,6 +283,7 @@ jobs:
           echo "- **Service:** ${{ env.SERVICE_NAME }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Region:** ${{ env.GCP_REGION }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Environment:** ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Access Mode:** ${{ steps.access-mode.outputs.label }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Image:** ${{ env.GCP_REGION }}-docker.pkg.dev/${{ needs.prepare.outputs.project-id }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "- **URL:** ${{ steps.deploy.outputs.url }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
