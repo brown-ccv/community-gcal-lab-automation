@@ -225,6 +225,8 @@ jobs:
           PROJECT_ID="${{ needs.prepare.outputs.project-id }}"
           SERVICE="${{ env.SERVICE_NAME }}"
           REGION="${{ env.GCP_REGION }}"
+          PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')
+          IAP_SA="service-${PROJECT_NUMBER}@gcp-sa-iap.iam.gserviceaccount.com"
 
           REQUIRED_GROUP=$(gcloud secrets versions access latest \
             --secret="required-google-group" \
@@ -253,6 +255,13 @@ jobs:
             --project="${PROJECT_ID}" \
             --region="${REGION}" \
             --member="group:${REQUIRED_GROUP}" \
+            --role="roles/run.invoker"
+
+          # Allow IAP to invoke the Cloud Run backend after user authentication.
+          gcloud run services add-iam-policy-binding "${SERVICE}" \
+            --project="${PROJECT_ID}" \
+            --region="${REGION}" \
+            --member="serviceAccount:${IAP_SA}" \
             --role="roles/run.invoker"
 
       - name: 🟢 Set up Node.js for smoke checks
@@ -307,7 +316,7 @@ jobs:
           echo "- **Service:** ${{ env.SERVICE_NAME }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Region:** ${{ env.GCP_REGION }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Environment:** ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Access Mode:** private (group invoker required)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Access Mode:** private (group + IAP backend invoker required)" >> $GITHUB_STEP_SUMMARY
           echo "- **Image:** ${{ env.GCP_REGION }}-docker.pkg.dev/${{ needs.prepare.outputs.project-id }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "- **URL:** ${{ steps.deploy.outputs.url }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
