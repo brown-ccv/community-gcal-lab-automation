@@ -227,6 +227,7 @@ jobs:
           REGION="${{ env.GCP_REGION }}"
           PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')
           IAP_SA="service-${PROJECT_NUMBER}@gcp-sa-iap.iam.gserviceaccount.com"
+          DEPLOY_SA="${{ needs.prepare.outputs.service-account }}"
 
           REQUIRED_GROUP=$(gcloud secrets versions access latest \
             --secret="required-google-group" \
@@ -262,6 +263,13 @@ jobs:
             --project="${PROJECT_ID}" \
             --region="${REGION}" \
             --member="serviceAccount:${IAP_SA}" \
+            --role="roles/run.invoker"
+
+          # Keep deployment smoke checks working with the CI service account identity.
+          gcloud run services add-iam-policy-binding "${SERVICE}" \
+            --project="${PROJECT_ID}" \
+            --region="${REGION}" \
+            --member="serviceAccount:${DEPLOY_SA}" \
             --role="roles/run.invoker"
 
       - name: 🟢 Set up Node.js for smoke checks
