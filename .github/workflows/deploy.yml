@@ -188,17 +188,6 @@ jobs:
           tags: |
             ${{ env.GCP_REGION }}-docker.pkg.dev/${{ needs.prepare.outputs.project-id }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:${{ github.sha }}
             ${{ env.GCP_REGION }}-docker.pkg.dev/${{ needs.prepare.outputs.project-id }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:latest
-
-      - name: 🔓 Select service access mode
-        id: access-mode
-        run: |
-          if [ "${{ github.event.inputs.environment }}" = "staging" ]; then
-            echo "flag=--allow-unauthenticated" >> "$GITHUB_OUTPUT"
-            echo "label=public (unauthenticated allowed)" >> "$GITHUB_OUTPUT"
-          else
-            echo "flag=--no-allow-unauthenticated" >> "$GITHUB_OUTPUT"
-            echo "label=private (invoker required)" >> "$GITHUB_OUTPUT"
-          fi
           
       - name: 🚀 Deploy to Cloud Run
         id: deploy
@@ -209,7 +198,7 @@ jobs:
           image: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ needs.prepare.outputs.project-id }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:${{ github.sha }}
           flags: |
             --service-account=${{ needs.prepare.outputs.service-account }}
-            ${{ steps.access-mode.outputs.flag }}
+            --no-allow-unauthenticated
             --port=8080
             --cpu=1
             --memory=512Mi
@@ -230,6 +219,41 @@ jobs:
             REQUIRED_GOOGLE_GROUP=required-google-group:latest
             GOOGLE_ADMIN_USER_EMAIL=google-admin-user-email:latest
             GOOGLE_ADMIN_SERVICE_ACCOUNT_JSON=google-admin-sa-json:latest
+
+      - name: 🔒 Enforce private/group access
+        run: |
+          PROJECT_ID="${{ needs.prepare.outputs.project-id }}"
+          SERVICE="${{ env.SERVICE_NAME }}"
+          REGION="${{ env.GCP_REGION }}"
+
+          REQUIRED_GROUP=$(gcloud secrets versions access latest \
+            --secret="required-google-group" \
+            --project="${PROJECT_ID}" | tr -d '\r' | xargs)
+
+          if [ -z "${REQUIRED_GROUP}" ]; then
+            echo "❌ required-google-group secret is empty; refusing to deploy with open/unknown access policy."
+            exit 1
+          fi
+
+          # Ensure service is never publicly invokable.
+          gcloud run services remove-iam-policy-binding "${SERVICE}" \
+            --project="${PROJECT_ID}" \
+            --region="${REGION}" \
+            --member="allUsers" \
+            --role="roles/run.invoker" || true
+
+          gcloud run services remove-iam-policy-binding "${SERVICE}" \
+            --project="${PROJECT_ID}" \
+            --region="${REGION}" \
+            --member="allAuthenticatedUsers" \
+            --role="roles/run.invoker" || true
+
+          # Ensure required lab group can invoke.
+          gcloud run services add-iam-policy-binding "${SERVICE}" \
+            --project="${PROJECT_ID}" \
+            --region="${REGION}" \
+            --member="group:${REQUIRED_GROUP}" \
+            --role="roles/run.invoker"
 
       - name: 🟢 Set up Node.js for smoke checks
         uses: actions/setup-node@v4
@@ -283,7 +307,7 @@ jobs:
           echo "- **Service:** ${{ env.SERVICE_NAME }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Region:** ${{ env.GCP_REGION }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Environment:** ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Access Mode:** ${{ steps.access-mode.outputs.label }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Access Mode:** private (group invoker required)" >> $GITHUB_STEP_SUMMARY
           echo "- **Image:** ${{ env.GCP_REGION }}-docker.pkg.dev/${{ needs.prepare.outputs.project-id }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "- **URL:** ${{ steps.deploy.outputs.url }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
