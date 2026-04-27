@@ -281,8 +281,14 @@ jobs:
         if: success()
         run: |
           SERVICE_URL="${{ steps.deploy.outputs.url }}"
+          TOKEN_AUDIENCE="${{ secrets.IAP_CLIENT_ID }}"
+
+          if [ -z "${TOKEN_AUDIENCE}" ]; then
+            TOKEN_AUDIENCE="${SERVICE_URL}"
+          fi
+
           echo "🏥 Checking service health..."
-          ID_TOKEN=$(gcloud auth print-identity-token --audiences="${SERVICE_URL}")
+          ID_TOKEN=$(gcloud auth print-identity-token --audiences="${TOKEN_AUDIENCE}")
           
           # Wait for service to be ready
           sleep 10
@@ -313,7 +319,13 @@ jobs:
           SERVICE_URL: ${{ steps.deploy.outputs.url }}
           AUTH_MODE: proxy
         run: |
-          ID_TOKEN=$(gcloud auth print-identity-token --audiences="${SERVICE_URL}")
+          TOKEN_AUDIENCE="${{ secrets.IAP_CLIENT_ID }}"
+
+          if [ -z "${TOKEN_AUDIENCE}" ]; then
+            TOKEN_AUDIENCE="${SERVICE_URL}"
+          fi
+
+          ID_TOKEN=$(gcloud auth print-identity-token --audiences="${TOKEN_AUDIENCE}")
           ID_TOKEN="${ID_TOKEN}" node scripts/verify-deployment.mjs
           
       - name: 📊 Deployment summary
