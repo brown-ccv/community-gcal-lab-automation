@@ -272,61 +272,89 @@ jobs:
             --member="serviceAccount:${DEPLOY_SA}" \
             --role="roles/run.invoker"
 
-      - name: 🟢 Set up Node.js for smoke checks
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          
-      - name: 🏥 Health check
+      - name: 🏥 Validate rollout readiness
         if: success()
         run: |
-          SERVICE_URL="${{ steps.deploy.outputs.url }}"
-          TOKEN_AUDIENCE="${{ secrets.IAP_CLIENT_ID }}"
+          PROJECT_ID="${{ needs.prepare.outputs.project-id }}"
+          SERVICE="${{ env.SERVICE_NAME }}"
+          REGION="${{ env.GCP_REGION }}"
 
-          if [ -z "${TOKEN_AUDIENCE}" ]; then
-            TOKEN_AUDIENCE="${SERVICE_URL}"
-          fi
+          echo "🏥 Validating Cloud Run rollout readiness..."
 
-          echo "🏥 Checking service health..."
-          ID_TOKEN=$(gcloud auth print-identity-token --audiences="${TOKEN_AUDIENCE}")
-          
-          # Wait for service to be ready
-          sleep 10
-          
-          # Try health check with retries
           MAX_RETRIES=5
           RETRY=0
-          
+
           while [ $RETRY -lt $MAX_RETRIES ]; do
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer ${ID_TOKEN}" "${SERVICE_URL}/health" || echo "000")
-            
-            if [ "$HTTP_CODE" = "200" ]; then
-              echo "✅ Health check passed (HTTP ${HTTP_CODE})"
+            LATEST_CREATED=$(gcloud run services describe "${SERVICE}" \
+              --project="${PROJECT_ID}" \
+              --region="${REGION}" \
+              --format='value(status.latestCreatedRevisionName)')
+
+            LATEST_READY=$(gcloud run services describe "${SERVICE}" \
+              --project="${PROJECT_ID}" \
+              --region="${REGION}" \
+              --format='value(status.latestReadyRevisionName)')
+
+            if [ -n "${LATEST_CREATED}" ] && [ "${LATEST_CREATED}" = "${LATEST_READY}" ]; then
+              echo "✅ Rollout ready at revision ${LATEST_READY}"
               exit 0
             fi
-            
+
             RETRY=$((RETRY+1))
-            echo "⚠️  Health check failed (HTTP ${HTTP_CODE}), retry ${RETRY}/${MAX_RETRIES}..."
+            echo "⚠️  Rollout not ready yet (created=${LATEST_CREATED:-none}, ready=${LATEST_READY:-none}), retry ${RETRY}/${MAX_RETRIES}..."
             sleep 5
           done
-          
-          echo "❌ Health check failed after ${MAX_RETRIES} retries"
+
+          echo "❌ Rollout readiness check failed after ${MAX_RETRIES} retries"
           exit 1
 
-      - name: 🔐 Auth smoke checks
+      - name: 🔐 Validate access policy
         if: success()
-        env:
-          SERVICE_URL: ${{ steps.deploy.outputs.url }}
-          AUTH_MODE: proxy
         run: |
-          TOKEN_AUDIENCE="${{ secrets.IAP_CLIENT_ID }}"
+          PROJECT_ID="${{ needs.prepare.outputs.project-id }}"
+          SERVICE="${{ env.SERVICE_NAME }}"
+          REGION="${{ env.GCP_REGION }}"
+          PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')
+          IAP_SA="service-${PROJECT_NUMBER}@gcp-sa-iap.iam.gserviceaccount.com"
+          DEPLOY_SA="${{ needs.prepare.outputs.service-account }}"
+          REQUIRED_GROUP=$(gcloud secrets versions access latest \
+            --secret="required-google-group" \
+            --project="${PROJECT_ID}" | tr -d '\r' | xargs)
 
-          if [ -z "${TOKEN_AUDIENCE}" ]; then
-            TOKEN_AUDIENCE="${SERVICE_URL}"
+          INVOKERS=$(gcloud run services get-iam-policy "${SERVICE}" \
+            --project="${PROJECT_ID}" \
+            --region="${REGION}" \
+            --format=json | jq -r '.bindings[] | select(.role=="roles/run.invoker") | .members[]')
+
+          echo "Invoker members:"
+          echo "${INVOKERS}"
+
+          if echo "${INVOKERS}" | grep -qx 'allUsers'; then
+            echo "❌ Public invoker allUsers must not be present"
+            exit 1
           fi
 
-          ID_TOKEN=$(gcloud auth print-identity-token --audiences="${TOKEN_AUDIENCE}")
-          ID_TOKEN="${ID_TOKEN}" node scripts/verify-deployment.mjs
+          if echo "${INVOKERS}" | grep -qx 'allAuthenticatedUsers'; then
+            echo "❌ Broad invoker allAuthenticatedUsers must not be present"
+            exit 1
+          fi
+
+          if ! echo "${INVOKERS}" | grep -qx "group:${REQUIRED_GROUP}"; then
+            echo "❌ Required group invoker binding missing: group:${REQUIRED_GROUP}"
+            exit 1
+          fi
+
+          if ! echo "${INVOKERS}" | grep -qx "serviceAccount:${IAP_SA}"; then
+            echo "❌ IAP service account invoker binding missing: serviceAccount:${IAP_SA}"
+            exit 1
+          fi
+
+          if ! echo "${INVOKERS}" | grep -qx "serviceAccount:${DEPLOY_SA}"; then
+            echo "❌ Deploy service account invoker binding missing: serviceAccount:${DEPLOY_SA}"
+            exit 1
+          fi
+
+          echo "✅ Access policy checks passed"
           
       - name: 📊 Deployment summary
         if: always()
