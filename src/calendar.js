@@ -56,11 +56,12 @@ function addDays(dateStr, daysToAdd) {
 }
 
 /**
- * Shift weekend dates to the previous Friday
+ * Shift weekend dates to the nearest weekday.
+ * Saturday moves to Friday. Sunday moves to Monday.
  * @param {string} dateStr - Date in MM/DD/YYYY format
- * @returns {Object} - { adjustedDate: string, wasShifted: boolean, originalDate: string }
+ * @returns {Object} - { adjustedDate: string, wasShifted: boolean, originalDate: string, shiftedTo: string|null }
  */
-function shiftWeekendToFriday(dateStr) {
+function shiftWeekendDate(dateStr) {
   const [month, day, year] = dateStr.split('/').map(s => parseInt(s.trim(), 10));
   const date = new Date(year, month - 1, day);
   const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
@@ -68,15 +69,17 @@ function shiftWeekendToFriday(dateStr) {
   let wasShifted = false;
   const originalDate = dateStr;
   
-  // If Saturday (6), shift back 1 day to Friday
+  // If Saturday -> Friday, Sunday -> Monday
+  let shiftedTo = null;
   if (dayOfWeek === 6) {
     date.setDate(date.getDate() - 1);
     wasShifted = true;
-  }
-  // If Sunday (0), shift back 2 days to Friday
-  else if (dayOfWeek === 0) {
-    date.setDate(date.getDate() - 2);
+    shiftedTo = 'Friday';
+  } else if (dayOfWeek === 0) {
+    // Sunday -> Monday
+    date.setDate(date.getDate() + 1);
     wasShifted = true;
+    shiftedTo = 'Monday';
   }
   
   const newMonth = String(date.getMonth() + 1).padStart(2, '0');
@@ -84,7 +87,7 @@ function shiftWeekendToFriday(dateStr) {
   const newYear = date.getFullYear();
   const adjustedDate = `${newMonth}/${newDay}/${newYear}`;
   
-  return { adjustedDate, wasShifted, originalDate };
+  return { adjustedDate, wasShifted, originalDate, shiftedTo };
 }
 
 /**
@@ -102,7 +105,7 @@ export async function createEvents(auth, { baseDate, title, time, attendeeEmail,
 
   for (const followUp of FOLLOW_UP_TYPES) {
     const rawEventDate = addDays(baseDate, followUp.days);
-    const { adjustedDate: eventDate, wasShifted, originalDate } = shiftWeekendToFriday(rawEventDate);
+      const { adjustedDate: eventDate, wasShifted, originalDate, shiftedTo } = shiftWeekendDate(rawEventDate);
     const eventKey = buildEventKey(baseDate, title, followUp.label, attendeeEmail);
     const eventTitle = `${participantId} - ${title} - ${followUp.label} check-in`;
 
@@ -115,6 +118,7 @@ export async function createEvents(auth, { baseDate, title, time, attendeeEmail,
         title: eventTitle,
         date: eventDate,
         wasShifted,
+          shiftedTo,
         originalDate: wasShifted ? originalDate : null,
         reason: 'Event already exists (idempotent)',
         eventId: existingEvent.id,
@@ -130,7 +134,7 @@ export async function createEvents(auth, { baseDate, title, time, attendeeEmail,
     
     let description = `Automated check-in event created for ${title}.\nBase date: ${baseDate}\nFollow-up type: ${followUp.label}\nParticipant: ${participantId}`;
     if (wasShifted) {
-      description += `\n\nNote: Original date ${originalDate} fell on a weekend and was shifted to ${eventDate} (Friday).`;
+      description += `\n\nNote: Original date ${originalDate} fell on a weekend and was shifted to ${shiftedTo} (${eventDate}).`;
     }
 
     const event = {
@@ -166,7 +170,9 @@ export async function createEvents(auth, { baseDate, title, time, attendeeEmail,
         type: 'dry-run',
         title: eventTitle,
         date: eventDate,
+        calendarId,
         wasShifted,
+        shiftedTo: wasShifted ? shiftedTo : null,
         originalDate: wasShifted ? originalDate : null,
         event: event,
       });
@@ -182,7 +188,9 @@ export async function createEvents(auth, { baseDate, title, time, attendeeEmail,
           type: 'created',
           title: eventTitle,
           date: eventDate,
+          calendarId,
           wasShifted,
+          shiftedTo: wasShifted ? shiftedTo : null,
           originalDate: wasShifted ? originalDate : null,
           eventId: response.data.id,
           htmlLink: response.data.htmlLink,
@@ -193,6 +201,7 @@ export async function createEvents(auth, { baseDate, title, time, attendeeEmail,
           title: eventTitle,
           date: eventDate,
           wasShifted,
+          shiftedTo: wasShifted ? shiftedTo : null,
           originalDate: wasShifted ? originalDate : null,
           error: error.message,
         });
@@ -227,51 +236,6 @@ async function findEventByKey(calendar, calendarId, eventKey, propertyName = 'ev
     console.error(`Error searching for existing event in calendar ${calendarId}:`, error.message);
     return null;
   }
-}
-
-/**
- * Delete events matching base date and title
- */
-export async function deleteEvents(auth, { baseDate, title, attendeeEmail, calendarId = 'primary' }) {
-  const calendar = google.calendar({ version: 'v3', auth });
-  const results = [];
-
-  for (const followUp of FOLLOW_UP_TYPES) {
-    const eventKey = buildEventKey(baseDate, title, followUp.label, attendeeEmail);
-    const existingEvent = await findEventByKey(calendar, calendarId, eventKey);
-
-    if (!existingEvent) {
-      results.push({
-        type: 'not-found',
-        followUpType: followUp.label,
-        eventKey: eventKey,
-      });
-      continue;
-    }
-
-    try {
-      await calendar.events.delete({
-        calendarId: calendarId,
-        eventId: existingEvent.id,
-        sendUpdates: 'all', // Notify attendees of cancellation
-      });
-
-      results.push({
-        type: 'deleted',
-        title: existingEvent.summary,
-        eventId: existingEvent.id,
-        followUpType: followUp.label,
-      });
-    } catch (error) {
-      results.push({
-        type: 'error',
-        followUpType: followUp.label,
-        error: error.message,
-      });
-    }
-  }
-
-  return results;
 }
 
 /**
@@ -341,97 +305,47 @@ export async function deleteAllDemoEvents(auth, { calendarId = 'primary' } = {})
 }
 
 /**
- * Delete all events created in the last N hours (debugging tool)
+ * Undo a prior event creation batch by deleting the exact event IDs that were created.
  * @param {OAuth2Client} auth - Authorized Google OAuth2 client
  * @param {Object} options
- * @param {number} options.hours - Number of hours to look back (default: 24)
- * @param {string} options.calendarId - Calendar ID (default: 'primary')
+ * @param {Array} options.events - [{ eventId, calendarId, summary? }]
  * @returns {Promise<Object>} Results with deleted count
  */
-export async function deleteRecentEvents(auth, { hours = 24, calendarId = 'primary' } = {}) {
+export async function undoCreatedEvents(auth, { events = [] } = {}) {
   const calendar = google.calendar({ version: 'v3', auth });
-  const results = { deleted: 0, errors: 0, errorDetails: [], eventsFound: [] };
-  const calendarIds = Array.isArray(calendarId)
-    ? [...new Set(calendarId.map((id) => String(id || '').trim()).filter(Boolean))]
-    : [String(calendarId || 'primary').trim() || 'primary'];
-  const sources = ['gcal-automation-demo', 'csv-import'];
+  const results = { undone: 0, errors: 0, errorDetails: [], eventsTargeted: [] };
+  const normalizedEvents = Array.isArray(events)
+    ? events
+      .map((event) => ({
+        eventId: String(event?.eventId || '').trim(),
+        calendarId: String(event?.calendarId || 'primary').trim() || 'primary',
+        summary: String(event?.summary || '').trim(),
+      }))
+      .filter((event) => event.eventId)
+    : [];
 
-  try {
-    // Calculate time range
-    const now = new Date();
-    const createdAfter = new Date(now.getTime() - hours * 60 * 60 * 1000);
-    
-    console.log(`Searching for events created after ${createdAfter.toISOString()}`);
+  results.eventsTargeted = normalizedEvents;
 
-    let automationEvents = [];
-
-    // Collect automation events by source from all configured calendars,
-    // then filter by event creation timestamp.
-    for (const targetCalendarId of calendarIds) {
-      for (const source of sources) {
-        const response = await calendar.events.list({
-          calendarId: targetCalendarId,
-          privateExtendedProperty: `source=${source}`,
-          maxResults: 2500,
-          singleEvents: true,
-        });
-
-        const events = response.data.items || [];
-        const scopedAutomationEvents = events
-          .filter((event) => {
-            const createdAt = event.created ? new Date(event.created) : null;
-            return createdAt && !Number.isNaN(createdAt.valueOf()) && createdAt >= createdAfter;
-          })
-          .map((event) => ({ ...event, _calendarId: targetCalendarId }));
-
-        automationEvents = automationEvents.concat(scopedAutomationEvents);
-      }
+  for (const event of normalizedEvents) {
+    try {
+      await calendar.events.delete({
+        calendarId: event.calendarId,
+        eventId: event.eventId,
+        sendUpdates: 'all',
+      });
+      results.undone++;
+    } catch (error) {
+      results.errors++;
+      results.errorDetails.push({
+        eventId: event.eventId,
+        calendarId: event.calendarId,
+        summary: event.summary,
+        error: error.message,
+      });
     }
-
-    // De-duplicate in case API filters overlap unexpectedly.
-    const seen = new Set();
-    automationEvents = automationEvents.filter((event) => {
-      const key = `${event._calendarId || 'primary'}:${event.id}`;
-      if (seen.has(key)) {
-        return false;
-      }
-      seen.add(key);
-      return true;
-    });
-
-    console.log(`Found ${automationEvents.length} automation events in the last ${hours} hours`);
-
-    // Store event summaries for reporting
-    results.eventsFound = automationEvents.map(e => ({
-      id: e.id,
-      summary: e.summary,
-      start: e.start.dateTime || e.start.date,
-      source: e.extendedProperties?.private?.source,
-    }));
-
-    // Delete each event
-    for (const event of automationEvents) {
-      try {
-        await calendar.events.delete({
-          calendarId: event._calendarId || 'primary',
-          eventId: event.id,
-          sendUpdates: 'all',
-        });
-        results.deleted++;
-      } catch (error) {
-        results.errors++;
-        results.errorDetails.push({
-          eventId: event.id,
-          summary: event.summary,
-          error: error.message,
-        });
-      }
-    }
-
-    return results;
-  } catch (error) {
-    throw new Error(`Failed to delete recent events: ${error.message}`);
   }
+
+  return results;
 }
 
 /**
@@ -487,7 +401,7 @@ export async function partitionCSVEventsByIdempotency(auth, events, {
       targetCalendarId = normalizedDefaultCalendarId;
     }
 
-    const { adjustedDate: eventDate } = shiftWeekendToFriday(event.date);
+    const { adjustedDate: eventDate, wasShifted, originalDate, shiftedTo } = shiftWeekendDate(event.date);
     const eventKey = buildCSVEventKey(event.participantId, eventDate, event.column);
     const existingEvent = await findEventByKey(calendar, targetCalendarId, eventKey, 'idempotencyKey');
 
@@ -573,7 +487,7 @@ export async function createEventsFromCSV(auth, events, {
       targetCalendarId = normalizedDefaultCalendarId;
     }
 
-    const { adjustedDate: eventDate, wasShifted, originalDate } = shiftWeekendToFriday(event.date);
+    const { adjustedDate: eventDate, wasShifted, originalDate, shiftedTo } = shiftWeekendDate(event.date);
     const eventKey = buildCSVEventKey(event.participantId, eventDate, event.column);
     
     try {
@@ -588,6 +502,7 @@ export async function createEventsFromCSV(auth, events, {
           title: event.title,
           date: eventDate,
           wasShifted,
+          shiftedTo: wasShifted ? shiftedTo : null,
           originalDate: wasShifted ? originalDate : null,
           reason: 'Event already exists',
           calendarType: event.calendarType,
@@ -602,6 +517,7 @@ export async function createEventsFromCSV(auth, events, {
           title: event.title,
           date: eventDate,
           wasShifted,
+          shiftedTo: wasShifted ? shiftedTo : null,
           originalDate: wasShifted ? originalDate : null,
           time: event.eventType === 'retention' ? 'All-day' : eventTime,
           calendarType: event.calendarType,
@@ -615,7 +531,7 @@ export async function createEventsFromCSV(auth, events, {
         description += `\nBase Date: ${event.baseDate}\nRetention Date (45 days before): ${eventDate}`;
       }
       if (wasShifted) {
-        description += `\n\nNote: Original date ${originalDate} fell on a weekend and was shifted to ${eventDate} (Friday).`;
+        description += `\n\nNote: Original date ${originalDate} fell on a weekend and was shifted to ${shiftedTo} (${eventDate}).`;
       }
 
       // Build event object - different format for retention (all-day) vs reminder (timed)
@@ -705,7 +621,9 @@ export async function createEventsFromCSV(auth, events, {
         participantId: event.participantId,
         title: `${event.participantId} - ${event.title}`,
         date: eventDate,
+        calendarId: targetCalendarId,
         wasShifted,
+        shiftedTo: wasShifted ? shiftedTo : null,
         originalDate: wasShifted ? originalDate : null,
         eventId: response.data.id,
         calendarType: event.calendarType,
@@ -721,6 +639,7 @@ export async function createEventsFromCSV(auth, events, {
         title: event.title,
         date: eventDate,
         wasShifted,
+        shiftedTo: wasShifted ? shiftedTo : null,
         originalDate: wasShifted ? originalDate : null,
         error: error.message,
         calendarType: event.calendarType,

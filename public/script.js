@@ -166,11 +166,11 @@ async function parseCsvFile(file) {
     return;
   }
 
-  const formData = new FormData();
-  formData.append('csvFile', file);
-
   try {
     showAlert('Parsing CSV file...', 'info');
+    const formData = new FormData();
+    formData.append('csvFile', file);
+
     const response = await fetch('/api/csv/preview', {
       method: 'POST',
       body: formData,
@@ -333,8 +333,14 @@ function isWeekend(dateStr) {
   return dayOfWeek === 0 || dayOfWeek === 6; // Sunday or Saturday
 }
 
-// Shift weekend dates to the previous Friday
-function shiftWeekendToFriday(dateStr) {
+function getWeekdayLabel(dateStr) {
+  const [month, day, year] = dateStr.split('/').map(s => parseInt(s.trim(), 10));
+  const date = new Date(year, month - 1, day);
+  return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][date.getDay()];
+}
+
+// Shift weekend dates to Friday
+function shiftWeekendDate(dateStr) {
   const [month, day, year] = dateStr.split('/').map(s => parseInt(s.trim(), 10));
   const date = new Date(year, month - 1, day);
   const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
@@ -342,13 +348,11 @@ function shiftWeekendToFriday(dateStr) {
   let wasShifted = false;
   const originalDate = dateStr;
   
-  // If Saturday (6), shift back 1 day to Friday
+  // If Saturday (6) or Sunday (0), shift back to Friday
   if (dayOfWeek === 6) {
     date.setDate(date.getDate() - 1);
     wasShifted = true;
-  }
-  // If Sunday (0), shift back 2 days to Friday
-  else if (dayOfWeek === 0) {
+  } else if (dayOfWeek === 0) {
     date.setDate(date.getDate() - 2);
     wasShifted = true;
   }
@@ -420,7 +424,7 @@ function applyDemoModeVisibility() {
   const csvDemoGroup = document.getElementById('csv-demo-mode-group');
   const manualDemoGroup = document.getElementById('manual-demo-mode-group');
   const clearDemoCard = document.getElementById('clear-demo-card');
-  const deleteRecentTitle = document.getElementById('delete-recent-title');
+  const undoCreateTitle = document.getElementById('undo-create-title');
 
   const hiddenStyle = IS_DEMO_MODE ? '' : 'none';
 
@@ -441,10 +445,10 @@ function applyDemoModeVisibility() {
     }
   }
 
-  if (deleteRecentTitle) {
-    deleteRecentTitle.textContent = IS_DEMO_MODE
-      ? 'Step 4: Delete Recent Events'
-      : 'Step 3: Delete Recent Events';
+  if (undoCreateTitle) {
+    undoCreateTitle.textContent = IS_DEMO_MODE
+      ? 'Step 3: Undo Last Event Creation'
+      : 'Step 2: Undo Last Event Creation';
   }
 
   if (!IS_DEMO_MODE) {
@@ -606,13 +610,14 @@ document.getElementById('create-form')?.addEventListener('submit', async (e) => 
         skipped: 0,
         errors: 0,
         details: eventDates.map(ed => {
-          const shifted = shiftWeekendToFriday(ed.date);
+          const shifted = shiftWeekendDate(ed.date);
           return {
             type: 'created',
             title: `${participantId} - ${title} - ${ed.label} check-in`,
             date: shifted.adjustedDate,
             wasShifted: shifted.wasShifted,
             originalDate: shifted.originalDate,
+            shiftedTo: shifted.shiftedTo,
             participantId
           };
         })
@@ -621,7 +626,9 @@ document.getElementById('create-form')?.addEventListener('submit', async (e) => 
       let message = `[DEMO] Would have created 3 events for "${title}":\n\n`;
       
       reportData.details.forEach(detail => {
-        const shiftInfo = detail.wasShifted ? ` (shifted from ${detail.originalDate})` : '';
+        const shiftInfo = detail.wasShifted
+          ? ` (moved from ${getWeekdayLabel(detail.originalDate)} to ${detail.shiftedTo})`
+          : '';
         message += `${detail.title}\n`;
         message += `   Date: ${detail.date}${shiftInfo} at 9:00 AM\n`;
         message += `   Duration: 30 minutes\n`;
@@ -664,6 +671,12 @@ document.getElementById('create-form')?.addEventListener('submit', async (e) => 
       const skipped = data.results.filter(r => r.type === 'skipped').length;
       const errors = data.results.filter(r => r.type === 'error').length;
       const shifted = data.results.filter(r => r.wasShifted).length;
+      const shiftedByDestination = data.results
+        .filter((r) => r.wasShifted && r.shiftedTo)
+        .reduce((acc, r) => {
+          acc[r.shiftedTo] = (acc[r.shiftedTo] || 0) + 1;
+          return acc;
+        }, {});
       
       let message = '';
       if (created > 0) {
@@ -671,13 +684,18 @@ document.getElementById('create-form')?.addEventListener('submit', async (e) => 
         if (created === 3) {
           message += ' Check your calendar and email for the invites:\n\n';
           data.results.filter(r => r.type === 'created').forEach(r => {
-            const shiftNote = r.wasShifted ? ` (shifted from ${r.originalDate})` : '';
+            const shiftNote = r.wasShifted
+              ? ` (moved from ${getWeekdayLabel(r.originalDate)} to ${r.shiftedTo})`
+              : '';
             message += `• ${r.title}\n  Date: ${r.date}${shiftNote}\n`;
           });
         }
         
         if (shifted > 0) {
-          message += `\nNote: ${shifted} event(s) were shifted from weekends to Friday.`;
+          const destinationSummary = Object.entries(shiftedByDestination)
+            .map(([day, count]) => `${count} to ${day}`)
+            .join(', ');
+          message += `\nNote: ${shifted} event(s) were shifted (${destinationSummary}).`;
         }
         
         message += '\n\nCheck your calendar and email.';
@@ -688,6 +706,7 @@ document.getElementById('create-form')?.addEventListener('submit', async (e) => 
             title: r.title,
             date: r.date,
             wasShifted: Boolean(r.wasShifted),
+            shiftedTo: r.shiftedTo || null,
             originalDate: r.originalDate || null,
           }));
 
@@ -721,101 +740,6 @@ document.getElementById('create-form')?.addEventListener('submit', async (e) => 
   } finally {
     submitBtn.disabled = false;
     submitBtn.textContent = originalText;
-  }
-});
-
-// Handle delete events form
-document.getElementById('delete-form')?.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  
-  const deleteBtn = document.getElementById('delete-btn');
-  const originalText = deleteBtn.textContent;
-  
-  // Get form values
-  const baseDate = document.getElementById('deleteBaseDate').value.trim();
-  const title = document.getElementById('deleteTitle').value.trim();
-  const attendeeEmail = document.getElementById('deleteAttendeeEmail').value.trim();
-  
-  // Validation
-  if (!validateDate(baseDate)) {
-    showAlert('Invalid date format. Please use MM/DD/YYYY', 'error');
-    return;
-  }
-  
-  if (!attendeeEmail) {
-    showAlert('Attendee email is required.', 'error');
-    return;
-  }
-  
-  // Confirm deletion
-  if (!confirm(`Are you sure you want to delete all check-in events for "${title}" (${attendeeEmail}) with base date ${baseDate}?`)) {
-    return;
-  }
-  
-  // Disable button and show loading
-  deleteBtn.disabled = true;
-  deleteBtn.innerHTML = '<span class="loading-spinner"></span>Deleting events...';
-  
-  try {
-    if (IS_DEMO_MODE) {
-      // DEMO MODE: Simulate deleting events without actual API calls
-      await new Promise(resolve => setTimeout(resolve, 1200)); // Simulate API delay
-      
-      const message = `[DEMO] Would have deleted 3 events for "${title}" (${attendeeEmail})\n\n` +
-                     `Note: This is a demo interface. Run with 'npm start' for full functionality.`;
-      
-      showAlert(message, 'success', true); // Persist in demo mode
-    } else {
-      // REAL MODE: Make actual API call
-      const response = await fetch('/delete-events', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ baseDate, title, attendeeEmail }),
-        redirect: 'manual',
-      });
-      
-      // Handle redirect to authorization
-      if (response.type === 'opaqueredirect' || response.status === 302) {
-        window.location.href = '/authorize';
-        return;
-      }
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to delete events');
-      }
-      
-      // Count results
-      const deleted = data.results.filter(r => r.type === 'deleted').length;
-      const notFound = data.results.filter(r => r.type === 'not-found').length;
-      const errors = data.results.filter(r => r.type === 'error').length;
-      
-      let message = '';
-      if (deleted > 0) {
-        message = `Successfully deleted ${deleted} event(s).`;
-      } else {
-        message = `No matching events found to delete.`;
-      }
-      
-      if (errors > 0) {
-        message += ` Warning: ${errors} event(s) failed to delete.`;
-      }
-      
-      showAlert(message, errors > 0 ? 'error' : 'success', true); // Persist
-    }
-    
-    // Clear form on success
-    document.getElementById('delete-form').reset();
-    
-  } catch (error) {
-    console.error('Error:', error);
-    showAlert(`Error: ${error.message}`, 'error');
-  } finally {
-    deleteBtn.disabled = false;
-    deleteBtn.textContent = originalText;
   }
 });
 
@@ -888,30 +812,27 @@ document.getElementById('clear-demo-btn')?.addEventListener('click', async () =>
   }
 });
 
-// Delete recent events handler
-document.getElementById('delete-recent-btn').addEventListener('click', async function() {
-  const hours = parseInt(document.getElementById('deleteHours').value) || 24;
-  
-  if (!confirm(`WARNING: This will DELETE ALL events created by this tool in the last ${hours} hours.\n\nThis includes both manual entries and CSV imports, regardless of demo mode.\n\nAre you sure you want to continue?`)) {
+// Undo last creation handler
+document.getElementById('undo-last-create-btn').addEventListener('click', async function() {
+  if (!confirm('This will undo your most recent event creation/import batch.\n\nOnly events created in that exact batch will be deleted.\n\nContinue?')) {
     return;
   }
 
-  const deleteBtn = this;
-  const originalText = deleteBtn.textContent;
-  deleteBtn.disabled = true;
-  deleteBtn.textContent = 'Deleting...';
+  const undoBtn = this;
+  const originalText = undoBtn.textContent;
+  undoBtn.disabled = true;
+  undoBtn.textContent = 'Undoing...';
 
   try {
     if (IS_DEMO_MODE) {
       await new Promise(resolve => setTimeout(resolve, 1000));
-      showAlert(`[DEMO] Would have deleted recent automation events from the last ${hours} hours`, 'success', true); // Persist in demo mode
+      showAlert('[DEMO] Would have undone the most recent creation batch', 'success', true); // Persist in demo mode
       return;
     }
 
-    const response = await fetch('/api/delete-recent', {
+    const response = await fetch('/api/undo-last-creation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hours }),
       redirect: 'manual'
     });
 
@@ -921,7 +842,7 @@ document.getElementById('delete-recent-btn').addEventListener('click', async fun
     }
 
     if (!response.ok) {
-      let errorMessage = 'Failed to delete events';
+      let errorMessage = 'Failed to undo event creation';
       try {
         const error = await response.json();
         errorMessage = error.error || errorMessage;
@@ -944,23 +865,24 @@ document.getElementById('delete-recent-btn').addEventListener('click', async fun
       const { results } = data;
       
       let message = '';
-      if (results.deleted > 0) {
-        message = `Successfully deleted ${results.deleted} event(s) from the last ${hours} hours.\n\n`;
-        if (results.eventsFound.length > 0) {
-          message += 'Deleted events:\n';
-          results.eventsFound.slice(0, 5).forEach(e => {
-            message += `• ${e.summary}\n`;
+      if (results.undone > 0) {
+        const sourceLabel = data.source === 'csv-import' ? 'CSV import' : 'manual create';
+        message = `Successfully undid ${results.undone} event(s) from your last ${sourceLabel} batch.\n\n`;
+        if (results.eventsTargeted.length > 0) {
+          message += 'Batch events:\n';
+          results.eventsTargeted.slice(0, 5).forEach(e => {
+            message += `• ${e.summary || e.eventId}\n`;
           });
-          if (results.eventsFound.length > 5) {
-            message += `... and ${results.eventsFound.length - 5} more`;
+          if (results.eventsTargeted.length > 5) {
+            message += `... and ${results.eventsTargeted.length - 5} more`;
           }
         }
       } else {
-        message = `No automated events found in the last ${hours} hours.`;
+        message = 'No events were undone.';
       }
       
       if (results.errors > 0) {
-        message += `\n\nWarning: ${results.errors} event(s) failed to delete.`;
+        message += `\n\nWarning: ${results.errors} event(s) failed to undo. You can retry.`;
         console.error('Error details:', results.errorDetails);
       }
       
@@ -971,8 +893,8 @@ document.getElementById('delete-recent-btn').addEventListener('click', async fun
     console.error('Error:', error);
     showAlert(`Error: ${error.message}`, 'error');
   } finally {
-    deleteBtn.disabled = false;
-    deleteBtn.textContent = originalText;
+    undoBtn.disabled = false;
+    undoBtn.textContent = originalText;
   }
 });
 
@@ -990,6 +912,7 @@ initializeInlineCsvFlow();
 // Generate report for manual entry
 function generateManualEntryReport(reportData, projectTitle) {
   const timestamp = new Date().toLocaleString();
+  const shiftedEvents = reportData.details.filter((event) => event.wasShifted);
   let report = `Manual Entry Report\n`;
   report += `Project: ${projectTitle}\n`;
   report += `Generated: ${timestamp}\n`;
@@ -997,7 +920,15 @@ function generateManualEntryReport(reportData, projectTitle) {
   
   report += `SUMMARY:\n`;
   report += `Total Events: ${reportData.created}\n`;
-  report += `Weekend Shifts: ${reportData.details.filter(d => d.wasShifted).length}\n\n`;
+  report += `Weekend Shifts: ${shiftedEvents.length}\n`;
+  if (shiftedEvents.length > 0) {
+    const shiftedByDestination = shiftedEvents.reduce((acc, event) => {
+      acc[event.shiftedTo || 'Unknown'] = (acc[event.shiftedTo || 'Unknown'] || 0) + 1;
+      return acc;
+    }, {});
+    report += `Moved To: ${Object.entries(shiftedByDestination).map(([day, count]) => `${day} (${count})`).join(', ')}\n`;
+  }
+  report += `\n`;
   
   report += `EVENTS TO BE CREATED:\n`;
   report += `${'-'.repeat(60)}\n`;
@@ -1005,7 +936,7 @@ function generateManualEntryReport(reportData, projectTitle) {
     report += `Event: ${event.title}\n`;
     report += `Date: ${event.date}`;
     if (event.wasShifted) {
-      report += ` (shifted from weekend to Friday)`;
+      report += ` (moved from ${getWeekdayLabel(event.originalDate)} to ${event.shiftedTo})`;
     }
     report += `\nTime: 9:00 AM - 9:30 AM\n\n`;
   });
@@ -1037,11 +968,16 @@ function displayManualEntryReport(reportData, projectTitle) {
   // Add summary
   const summary = document.createElement('div');
   summary.style.cssText = 'margin: 15px 0; padding: 15px; background: white; border-radius: 4px;';
-  const shifted = reportData.details.filter(d => d.wasShifted).length;
+  const shiftedEvents = reportData.details.filter((event) => event.wasShifted);
+  const shiftedByDestination = shiftedEvents.reduce((acc, event) => {
+    acc[event.shiftedTo || 'Unknown'] = (acc[event.shiftedTo || 'Unknown'] || 0) + 1;
+    return acc;
+  }, {});
   summary.innerHTML = `
     <strong>Summary:</strong><br>
     • Total Events: ${reportData.created}<br>
-    ${shifted > 0 ? `• Weekend Shifts: ${shifted}<br>` : ''}
+    ${shiftedEvents.length > 0 ? `• Weekend Shifts: ${shiftedEvents.length}<br>` : ''}
+    ${shiftedEvents.length > 0 ? `• Moved To: ${Object.entries(shiftedByDestination).map(([day, count]) => `${day} (${count})`).join(', ')}<br>` : ''}
   `;
   reportContainer.appendChild(summary);
   
@@ -1051,7 +987,7 @@ function displayManualEntryReport(reportData, projectTitle) {
   
   let eventHTML = '<strong>Events:</strong><br><br>';
   reportData.details.forEach(event => {
-    const shiftNote = event.wasShifted ? ` <span style="color: #ff9800;">(shifted from weekend)</span>` : '';
+    const shiftNote = event.wasShifted ? ` <span style="color: #ff9800;">(moved from ${getWeekdayLabel(event.originalDate)} to ${event.shiftedTo})</span>` : '';
     eventHTML += `• ${event.title}<br>`;
     eventHTML += `  Date: ${event.date}${shiftNote}<br>`;
     eventHTML += `  Time: 9:00 AM - 9:30 AM<br><br>`;
@@ -1081,6 +1017,13 @@ function generateCsvImportReport(results) {
   const createdEvents = details.filter((event) => event.type === 'created');
   const skippedEvents = details.filter((event) => event.type === 'skipped');
   const errorEvents = details.filter((event) => event.type === 'error');
+  const shiftedEvents = createdEvents.filter((event) => event.wasShifted || (event.originalDate && event.originalDate !== event.date));
+  const shiftedByDestination = shiftedEvents.reduce((acc, event) => {
+    const key = event.shiftedTo || (event.originalDate ? (getWeekdayLabel(event.originalDate) === 'Saturday' ? 'Friday' : 'Monday') : 'Unknown');
+    acc[key] = acc[key] || [];
+    acc[key].push(event);
+    return acc;
+  }, {});
 
   let report = `CSV Import Report\n`;
   report += `Generated: ${timestamp}\n`;
@@ -1089,6 +1032,22 @@ function generateCsvImportReport(results) {
   report += `Created: ${results.created || 0}\n`;
   report += `Skipped (duplicates): ${results.skipped || 0}\n`;
   report += `Errors: ${results.errors || 0}\n\n`;
+
+  if (shiftedEvents.length > 0) {
+    report += `WEEKEND-SHIFTED EVENTS:\n`;
+    report += `${'-'.repeat(60)}\n`;
+    ['Friday', 'Monday'].forEach((day) => {
+      const grouped = shiftedByDestination[day] || [];
+      if (grouped.length === 0) return;
+      report += `Moved to ${day} (${grouped.length} event(s)):\n`;
+      grouped.forEach((event) => {
+        report += `• ${event.title}\n`;
+        report += `  Moved from ${getWeekdayLabel(event.originalDate)} to ${event.shiftedTo || day}\n`;
+        report += `  Date: ${event.date}\n`;
+      });
+      report += `\n`;
+    });
+  }
 
   if (createdEvents.length > 0) {
     report += `CREATED EVENTS:\n`;
@@ -1130,10 +1089,48 @@ function displayCsvImportReport(results) {
   const created = results.created || 0;
   const skipped = results.skipped || 0;
   const errors = results.errors || 0;
+  const shiftedEvents = Array.isArray(results.details)
+    ? results.details.filter((event) => event.type === 'created' && (event.wasShifted || (event.originalDate && event.originalDate !== event.date)))
+    : [];
+  const shiftedByDestination = shiftedEvents.reduce((acc, event) => {
+    const destination = event.shiftedTo || (event.originalDate ? (getWeekdayLabel(event.originalDate) === 'Saturday' ? 'Friday' : 'Monday') : 'Unknown');
+    acc[destination] = acc[destination] || [];
+    acc[destination].push(event);
+    return acc;
+  }, {});
+
+  const weekendShiftHtml = shiftedEvents.length > 0
+    ? `
+      <div style="margin-top: 12px; padding: 12px; border-radius: 8px; background: #fff8e8; border: 1px solid #f2c97d;">
+        <strong>Weekend-shifted events</strong>
+        <p style="margin: 6px 0 0 0; font-size: 0.92rem; color: var(--text-700);">
+          ${shiftedEvents.length} event(s) were moved to weekday dates.
+        </p>
+        ${['Friday', 'Monday'].map((day) => {
+          const grouped = shiftedByDestination[day] || [];
+          if (grouped.length === 0) return '';
+          return `
+            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(47, 134, 217, 0.16);">
+              <strong>Moved to ${day}</strong>
+              <ul style="margin: 8px 0 0 18px; padding: 0; color: var(--text-900);">
+                ${grouped.map((event) => `
+                  <li style="margin-bottom: 6px;">
+                    <strong>${event.title}</strong><br>
+                    Moved from ${getWeekdayLabel(event.originalDate)} to ${event.shiftedTo || (getWeekdayLabel(event.originalDate) === 'Saturday' ? 'Friday' : 'Monday')}
+                  </li>
+                `).join('')}
+              </ul>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `
+    : '';
 
   reportContainer.innerHTML = `
     <strong>Import Summary</strong>
     <p><small>Created: ${created} | Skipped: ${skipped} | Errors: ${errors}</small></p>
+    ${weekendShiftHtml}
     <details>
       <summary>View detailed report</summary>
       <pre style="white-space: pre-wrap; margin-top: 8px;">${reportText}</pre>

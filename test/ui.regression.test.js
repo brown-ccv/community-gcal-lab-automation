@@ -20,11 +20,11 @@ test('live mode banner stays hidden for production users', () => {
   assert.equal(source.includes('Connected to Google Calendar API'), false);
 });
 
-test('live mode removes clear demo card and renumbers delete recent section', () => {
+test('live mode removes clear demo card and renumbers undo section', () => {
   const source = getScriptSource();
 
   assert.match(source, /clearDemoCard\.remove\(\);/);
-  assert.match(source, /'Step 3: Delete Recent Events'/);
+  assert.match(source, /'Step 3: Undo Last Event Creation'/);
 });
 
 test('csv import flow keeps post-import report visible in live mode', () => {
@@ -32,6 +32,8 @@ test('csv import flow keeps post-import report visible in live mode', () => {
 
   assert.match(source, /displayCsvImportReport\(payload\.results \|\| \{\}\);/);
   assert.match(source, /displayCsvImportReport\(demoResults\);/);
+  assert.match(source, /\['Friday', 'Monday'\]/);
+  assert.match(source, /getWeekdayLabel\(event\.originalDate\)/);
 
   // Preview reset should not happen in import success paths so the report stays visible.
   assert.equal(source.includes('resetCsvPreview();'), false);

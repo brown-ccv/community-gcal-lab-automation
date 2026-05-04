@@ -83,13 +83,13 @@ Extra: Example input format I plan to support for the demo (CLI):
   **Your answer:** Base date + event title + follow-up type (e.g., "2025-11-10_BURST Study_10day")
 
 14) Delete/reset command
-- 14.1 Should I add a `--delete` flag to remove test events? Example usage:
-  ```
-  node src/cli.js --delete --date 11/10/2025 --title "BURST Study"
-  ```
-  This would find and delete all events matching that base date + title.
+- 14.1 Should I add a command for removing test events? Example usage:
+    ```
+    node src/cli.js
+    ```
+    The current workflow keeps deletions manual in Google Calendar and uses the in-app undo action for the most recent create/import batch.
   
-  **Your answer:** That's perfect.
+    **Your answer:** That's perfect.
 
 15) Web UI vs CLI
 - 15.1 A minimal web form would take ~30-45 minutes (Express + single HTML page with form submission). CLI is ~10 minutes to finish wiring up. Which do you prefer for the demo?

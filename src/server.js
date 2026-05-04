@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 import { google } from 'googleapis';
 import multer from 'multer';
 import dotenv from 'dotenv';
-import { createEvents, deleteEvents, deleteAllDemoEvents, createEventsFromCSV, deleteRecentEvents, partitionCSVEventsByIdempotency } from './calendar.js';
+import { createEvents, deleteAllDemoEvents, createEventsFromCSV, undoCreatedEvents, partitionCSVEventsByIdempotency } from './calendar.js';
 import { parseCSVFromBuffer, getEventSummary } from './csvParser.js';
 import { extractProxyIdentity, getAuthenticatedEmail, requireAuth, requireGroupMember, isAuthBypassed } from './middleware/auth.js';
 import { configurePassport, createAuthRoutes } from './routes/auth.js';
@@ -191,6 +191,35 @@ createAuthRoutes(app);
 
 // Routes
 const requireProtectedAccess = [requireAuth, requireGroupMember];
+let lastCreatedBatch = null;
+
+function trackCreatedBatch(source, createdEvents) {
+  lastCreatedBatch = {
+    source,
+    createdAt: new Date().toISOString(),
+    events: Array.isArray(createdEvents) ? createdEvents : [],
+  };
+}
+
+function getCreatedFromManualResults(results) {
+  return (Array.isArray(results) ? results : [])
+    .filter((result) => result?.type === 'created' && result?.eventId)
+    .map((result) => ({
+      eventId: result.eventId,
+      calendarId: result.calendarId || 'primary',
+      summary: result.title || '',
+    }));
+}
+
+function getCreatedFromCsvResults(results) {
+  return (Array.isArray(results?.details) ? results.details : [])
+    .filter((result) => result?.type === 'created' && result?.eventId)
+    .map((result) => ({
+      eventId: result.eventId,
+      calendarId: result.calendarId || 'primary',
+      summary: result.title || '',
+    }));
+}
 
 // API endpoint to check demo mode
 app.get('/api/demo-mode', (req, res) => {
@@ -272,56 +301,12 @@ app.post('/create-events', requireProtectedAccess, async (req, res) => {
       dryRun: false,
       demoMode: demoMode === true || demoMode === 'true',
     });
+
+    trackCreatedBatch('manual-entry', getCreatedFromManualResults(results));
     
     res.json({ success: true, results, demoMode: demoMode === true || demoMode === 'true' });
   } catch (error) {
     console.error('Error creating events:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Delete events endpoint (PROTECTED)
-app.post('/delete-events', requireProtectedAccess, async (req, res) => {
-  const { baseDate, title, attendeeEmail } = req.body;
-  
-  if (!baseDate || !title || !attendeeEmail) {
-    return res.status(400).json({ error: 'Base date, title, and attendee email are required.' });
-  }
-  
-  // Basic email validation
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(attendeeEmail)) {
-    return res.status(400).json({ error: 'Invalid email address format.' });
-  }
-
-  if (DEMO_MODE) {
-    return res.json({
-      success: true,
-      demo: true,
-      message: '[DEMO] Delete simulated. No calendar events were removed.',
-      results: [
-        {
-          type: 'dry-run',
-          title,
-          baseDate,
-          attendeeEmail,
-        },
-      ],
-    });
-  }
-  
-  try {
-    const auth = getCalendarAuthClient();
-    const results = await deleteEvents(auth, {
-      baseDate,
-      title,
-      attendeeEmail,
-      calendarId: 'primary',
-    });
-    
-    res.json({ success: true, results });
-  } catch (error) {
-    console.error('Error deleting events:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -484,6 +469,8 @@ app.post('/api/csv/import', requireProtectedAccess, upload.single('csvFile'), as
       attendeeEmail,
     });
 
+    trackCreatedBatch('csv-import', getCreatedFromCsvResults(results));
+
     res.json({
       success: true,
       results,
@@ -494,36 +481,51 @@ app.post('/api/csv/import', requireProtectedAccess, upload.single('csvFile'), as
   }
 });
 
-// Delete recent events (debugging tool) (PROTECTED)
-app.post('/api/delete-recent', requireProtectedAccess, async (req, res) => {
+// Undo latest creation batch (manual or CSV import) (PROTECTED)
+app.post('/api/undo-last-creation', requireProtectedAccess, async (req, res) => {
   try {
     if (DEMO_MODE) {
       return res.json({
         success: true,
         demo: true,
-        message: '[DEMO] Would have deleted recent automation events',
+        message: '[DEMO] Undo simulated. No calendar events were removed.',
       });
     }
 
-    const hours = parseInt(req.body.hours) || 24;
-    const auth = getCalendarAuthClient();
-    const configuredCalendars = [
-      'primary',
-      String(process.env.REMINDER_CALENDAR_ID || '').trim(),
-      String(process.env.RETENTION_CALENDAR_ID || '').trim(),
-    ].filter(Boolean);
+    if (!lastCreatedBatch || !Array.isArray(lastCreatedBatch.events) || lastCreatedBatch.events.length === 0) {
+      return res.status(400).json({ error: 'No recent event creation batch is available to undo.' });
+    }
 
-    const results = await deleteRecentEvents(auth, {
-      hours,
-      calendarId: configuredCalendars,
-    });
+    const auth = getCalendarAuthClient();
+    const attempted = lastCreatedBatch.events.length;
+    const source = lastCreatedBatch.source;
+    const createdAt = lastCreatedBatch.createdAt;
+    const results = await undoCreatedEvents(auth, { events: lastCreatedBatch.events });
+
+    if (results.errors > 0) {
+      // Keep only failed entries so users can retry undo safely.
+      lastCreatedBatch = {
+        source,
+        createdAt,
+        events: results.errorDetails.map((detail) => ({
+          eventId: detail.eventId,
+          calendarId: detail.calendarId,
+          summary: detail.summary,
+        })),
+      };
+    } else {
+      lastCreatedBatch = null;
+    }
 
     res.json({
       success: true,
+      source,
+      createdAt,
+      attempted,
       results,
     });
   } catch (error) {
-    console.error('Error deleting recent events:', error);
+    console.error('Error undoing created events:', error);
     res.status(500).json({ error: error.message });
   }
 });

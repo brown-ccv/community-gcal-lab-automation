@@ -40,13 +40,7 @@ You'll be prompted to:
 
 ### CLI Delete Mode
 
-To remove test events from the command line:
-
-```bash
-npm run cli -- --delete --date 11/10/2025 --title "BURST-001"
-```
-
-Or use the delete form in the web interface (easier).
+Legacy delete-by-signature examples have been removed from the active CLI. Use manual deletion in Google Calendar or the app's batch undo action for the most recent create/import run.
 
 ## Configuration
 

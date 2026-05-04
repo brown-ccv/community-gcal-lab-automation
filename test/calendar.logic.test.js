@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { google } from 'googleapis';
-import { createEvents, createEventsFromCSV, deleteRecentEvents, partitionCSVEventsByIdempotency } from '../src/calendar.js';
+import { createEvents, createEventsFromCSV, undoCreatedEvents, partitionCSVEventsByIdempotency } from '../src/calendar.js';
 
 function createMockCalendar(overrides = {}) {
   const listCalls = [];
@@ -53,6 +53,29 @@ test('createEvents dry-run returns 3 events and shifts weekend date to Friday', 
   assert.equal(results[0].originalDate, '11/08/2025');
   assert.equal(insertCalls.length, 0);
   assert.equal(listCalls.length, 3);
+});
+
+test('createEvents dry-run shifts Sunday event to Monday', async () => {
+  const originalCalendarFactory = google.calendar;
+  const { calendar } = createMockCalendar();
+
+  google.calendar = () => calendar;
+
+  const results = await createEvents({}, {
+    baseDate: '11/08/2025',
+    title: 'BURST Follow-up',
+    time: '09:00',
+    attendeeEmail: '701@example.com',
+    dryRun: true,
+    demoMode: false,
+  });
+
+  google.calendar = originalCalendarFactory;
+
+  const mondayShift = results.find((result) => result.wasShifted && result.shiftedTo === 'Monday');
+  assert.ok(mondayShift);
+  assert.equal(mondayShift.originalDate, '11/09/2025');
+  assert.equal(mondayShift.date, '11/10/2025');
 });
 
 test('createEvents skips existing events via idempotency checks', async () => {
@@ -190,59 +213,12 @@ test('createEventsFromCSV checks idempotency with idempotencyKey property', asyn
   google.calendar = originalCalendarFactory;
 });
 
-test('deleteRecentEvents scans all configured calendars and deletes from matching source calendars', async () => {
+test('undoCreatedEvents deletes only the exact events passed in', async () => {
   const originalCalendarFactory = google.calendar;
-  const listCalls = [];
   const deleteCalls = [];
-  const recentCreated = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const staleCreated = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
 
   const calendar = {
     events: {
-      list: async (params) => {
-        listCalls.push(params);
-
-        if (params.calendarId === 'calendar-reminder' && params.privateExtendedProperty === 'source=csv-import') {
-          return {
-            data: {
-              items: [
-                {
-                  id: 'event-reminder-1',
-                  summary: 'Reminder event',
-                  created: recentCreated,
-                  start: { dateTime: '2026-04-17T09:00:00Z' },
-                  extendedProperties: { private: { source: 'csv-import' } },
-                },
-                {
-                  id: 'event-reminder-old',
-                  summary: 'Old reminder event',
-                  created: staleCreated,
-                  start: { dateTime: '2026-04-10T09:00:00Z' },
-                  extendedProperties: { private: { source: 'csv-import' } },
-                },
-              ],
-            },
-          };
-        }
-
-        if (params.calendarId === 'calendar-retention' && params.privateExtendedProperty === 'source=gcal-automation-demo') {
-          return {
-            data: {
-              items: [
-                {
-                  id: 'event-retention-1',
-                  summary: 'Retention event',
-                  created: recentCreated,
-                  start: { date: '2026-04-17' },
-                  extendedProperties: { private: { source: 'gcal-automation-demo' } },
-                },
-              ],
-            },
-          };
-        }
-
-        return { data: { items: [] } };
-      },
       delete: async (params) => {
         deleteCalls.push(params);
         return {};
@@ -252,17 +228,23 @@ test('deleteRecentEvents scans all configured calendars and deletes from matchin
 
   google.calendar = () => calendar;
 
-  const results = await deleteRecentEvents({}, {
-    hours: 24,
-    calendarId: ['calendar-reminder', 'calendar-retention'],
+  const results = await undoCreatedEvents({}, {
+    events: [
+      {
+        eventId: 'event-reminder-1',
+        calendarId: 'calendar-reminder',
+        summary: 'Reminder event',
+      },
+      {
+        eventId: 'event-retention-1',
+        calendarId: 'calendar-retention',
+        summary: 'Retention event',
+      },
+    ],
   });
 
-  assert.equal(listCalls.length, 4);
-  assert.equal(
-    listCalls.every((call) => String(call.privateExtendedProperty || '').startsWith('source=')),
-    true
-  );
-  assert.equal(results.deleted, 2);
+  assert.equal(results.undone, 2);
+  assert.equal(results.errors, 0);
   assert.deepEqual(
     deleteCalls.map((call) => `${call.calendarId}:${call.eventId}`).sort(),
     ['calendar-reminder:event-reminder-1', 'calendar-retention:event-retention-1']

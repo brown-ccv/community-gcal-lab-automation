@@ -23,28 +23,22 @@ Updated the idempotency system to allow creating identical check-in events for d
   }
   ```
 
-- **`deleteEvents()` function**: Now requires `attendeeEmail` parameter to match the correct events
+- **`deleteEvents()` function**: Legacy note from the earlier implementation; signature-based deletion has since been removed in favor of manual deletion and batch undo
 
 ### Web Interface
-- **`public/index.html`**: Added attendee email field to delete form
-  - Delete form now requires: base date, title, AND email
-  - Help text explains: "Must match the email used when creating the events"
+- **`public/index.html`**: The old delete form is no longer present
+  - Deletions are now handled manually in Google Calendar
+  - The app keeps an undo action for the most recent create/import batch
 
-- **`public/script.js`**: Updated delete form handler
-  - Validates email presence before submission
-  - Passes `attendeeEmail` to `/delete-events` endpoint
-  - Confirmation dialog now shows email: `"${title}" (${attendeeEmail})`
+- **`public/script.js`**: The old delete form handler was removed
+  - The UI now exposes only batch undo for recent create/import actions
 
-- **`src/server.js`**: Updated `/delete-events` endpoint
-  - Now requires `attendeeEmail` in request body
-  - Validates email format with regex
-  - Returns 400 error if email missing or invalid
+- **`src/server.js`**: The `/delete-events` endpoint was removed
+  - Batch undo is now handled by `/api/undo-last-creation`
 
 ### CLI
-- **`src/cli.js`**: Updated delete mode
-  - `deleteMode()` now accepts `attendeeEmail` parameter
-  - Usage updated: `--delete --date MM/DD/YYYY --title "Title" --email "email@example.com"`
-  - Requires `--email` flag for delete operations
+- **`src/cli.js`**: Delete mode was removed
+  - The CLI now focuses on event creation only
 
 ## Use Cases Now Supported
 
@@ -72,17 +66,8 @@ POST /create-events
 
 Both will succeed and create separate event series!
 
-### ✅ Targeted deletion
-Delete only specific participant's events:
-```bash
-# Only deletes Alice's events, leaves Bob's intact
-POST /delete-events
-{
-  "baseDate": "11/10/2025",
-  "title": "BURST-001",
-  "attendeeEmail": "alice@example.com"
-}
-```
+### ✅ Targeted cleanup
+Delete only specific participant's events manually in Google Calendar when needed, or use the batch undo action immediately after a create/import run.
 
 ## Migration Notes
 - **No breaking changes**: Existing events still work
@@ -93,8 +78,7 @@ POST /delete-events
 - [ ] Create events for two different emails with same baseDate/title
 - [ ] Verify both event series appear in calendar
 - [ ] Delete one participant's events, verify other remains
-- [ ] Test CLI delete with `--email` flag
-- [ ] Verify web form requires email for deletion
+- [ ] Verify the batch undo action only removes the most recent create/import batch
 - [ ] Test edge case: same email, different titles (should work)
 
 ## Documentation Updates Needed

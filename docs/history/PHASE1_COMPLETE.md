@@ -111,8 +111,8 @@ npm run cli
 # Development mode (auto-restart on changes)
 npm run dev
 
-# CLI delete mode
-npm run cli -- --delete --date 11/10/2025 --title "TEST-001"
+# Legacy CLI delete mode
+The signature-delete CLI flow was later removed in favor of manual deletion and batch undo.
 ```
 
 ## 🎯 What Changed from CLI Version

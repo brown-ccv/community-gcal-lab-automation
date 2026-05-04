@@ -2,7 +2,7 @@
 
 import readline from 'readline';
 import { authorize } from './auth.js';
-import { createEvents, deleteEvents } from './calendar.js';
+import { createEvents } from './calendar.js';
 
 const DEFAULT_TIME = '09:00';
 
@@ -154,86 +154,17 @@ async function interactiveMode() {
 }
 
 /**
- * Delete mode (CLI flag: --delete)
- */
-async function deleteMode(baseDate, title, attendeeEmail) {
-  console.log('\n🗑️  Delete mode\n');
-  console.log(`Base date: ${baseDate}`);
-  console.log(`Title: ${title}`);
-  console.log(`Attendee: ${attendeeEmail}`);
-  console.log('\nThis will delete all check-in events matching this base date, title, and attendee email.\n');
-
-  const confirm = await question('Are you sure? (yes/no): ');
-  if (confirm.toLowerCase() !== 'yes' && confirm.toLowerCase() !== 'y') {
-    console.log('Cancelled.');
-    rl.close();
-    process.exit(0);
-  }
-
-  console.log('\n🔐 Authorizing with Google Calendar...');
-  const auth = await authorize();
-
-  console.log('✅ Authorized! Deleting events...\n');
-  const results = await deleteEvents(auth, {
-    baseDate,
-    title,
-    attendeeEmail,
-    calendarId: 'primary',
-  });
-
-  // Display results
-  console.log('--- Results ---\n');
-  for (const result of results) {
-    if (result.type === 'deleted') {
-      console.log(`✅ Deleted: ${result.title}`);
-      console.log(`   Event ID: ${result.eventId}\n`);
-    } else if (result.type === 'not-found') {
-      console.log(`⏭️  Not found: ${result.followUpType} check-in`);
-      console.log(`   Key: ${result.eventKey}\n`);
-    } else if (result.type === 'error') {
-      console.log(`❌ Error: ${result.followUpType} check-in`);
-      console.log(`   ${result.error}\n`);
-    }
-  }
-
-  rl.close();
-}
-
-/**
  * Main entry point
  */
 async function main() {
   const args = process.argv.slice(2);
 
-  // Check for --delete flag
-  if (args.includes('--delete')) {
-    const dateIdx = args.indexOf('--date');
-    const titleIdx = args.indexOf('--title');
-    const emailIdx = args.indexOf('--email');
-
-    if (dateIdx === -1 || titleIdx === -1 || emailIdx === -1 || 
-        !args[dateIdx + 1] || !args[titleIdx + 1] || !args[emailIdx + 1]) {
-      console.error('❌ Usage: node src/cli.js --delete --date MM/DD/YYYY --title "Title" --email "email@example.com"');
-      process.exit(1);
-    }
-
-    const baseDate = args[dateIdx + 1];
-    const title = args[titleIdx + 1];
-    const attendeeEmail = args[emailIdx + 1];
-
-    if (!validateDate(baseDate)) {
-      console.error('❌ Invalid date format. Use MM/DD/YYYY');
-      process.exit(1);
-    }
-
-    await deleteMode(baseDate, title, attendeeEmail);
-  } else if (args.length === 0) {
+  if (args.length === 0) {
     // Interactive mode
     await interactiveMode();
   } else {
     console.error('❌ Usage:');
     console.error('  Interactive mode: node src/cli.js');
-    console.error('  Delete mode:      node src/cli.js --delete --date MM/DD/YYYY --title "Title" --email "email@example.com"');
     process.exit(1);
   }
 }

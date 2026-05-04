@@ -167,63 +167,9 @@
       </section>
 
       <section class="stack-column">
-        <div class="card compact-card">
-          <div class="card-heading">
-            <h2>Step 2: Delete by Event Signature</h2>
-            <p class="help-text">Use this when you want to remove one participant set by date, title, and email.</p>
-          </div>
-
-          <form id="delete-form">
-            <div class="form-group">
-              <label for="deleteBaseDate">
-                Base Date <span class="required">*</span>
-              </label>
-              <input 
-                type="text" 
-                id="deleteBaseDate" 
-                name="baseDate" 
-                placeholder="MM/DD/YYYY"
-                pattern="\d{1,2}/\d{1,2}/\d{4}"
-                required
-              >
-            </div>
-
-            <div class="form-group">
-              <label for="deleteTitle">
-                Participant ID or Event Name <span class="required">*</span>
-              </label>
-              <input 
-                type="text" 
-                id="deleteTitle" 
-                name="title" 
-                placeholder="e.g., BURST-001"
-                required
-              >
-            </div>
-
-            <div class="form-group">
-              <label for="deleteAttendeeEmail">
-                Attendee Email <span class="required">*</span>
-              </label>
-              <input 
-                type="email" 
-                id="deleteAttendeeEmail" 
-                name="attendeeEmail" 
-                placeholder="participant@example.com"
-                required
-              >
-              <small class="help-text">Must match the email used when creating events.</small>
-            </div>
-
-            <button type="submit" class="btn btn-danger" id="delete-btn">
-              Delete Events
-            </button>
-          </form>
-        </div>
-
         <div class="card compact-card warning-card" id="clear-demo-card">
           <div class="card-heading">
-            <h2>Step 3: Clear Demo Events</h2>
+            <h2>Step 2: Clear Demo Events</h2>
             <p class="help-text">Remove all events tagged as demo mode.</p>
           </div>
           <p class="notice-text">This action is permanent and cannot be undone.</p>
@@ -232,22 +178,12 @@
 
         <div class="card compact-card">
           <div class="card-heading">
-            <h2 id="delete-recent-title">Step 4: Delete Recent Events</h2>
-            <p class="help-text">Debug utility for removing automation-created events by creation time in a recent window.</p>
+            <h2 id="undo-create-title">Step 3: Undo Last Event Creation</h2>
+            <p class="help-text">Undo the most recent create/import action by deleting only the events created in that batch.</p>
           </div>
 
-          <div class="notice-text notice-danger">
-            This affects both manual and CSV-created events in the selected time range.
-          </div>
-
-          <div class="form-group">
-            <label for="deleteHours">Hours to look back (creation time)</label>
-            <input type="number" id="deleteHours" value="24" min="1" max="168">
-            <small class="help-text">Range: 1-168 hours (up to one week).</small>
-          </div>
-
-          <button type="button" class="btn btn-danger" id="delete-recent-btn">
-            Delete Recent Events
+          <button type="button" class="btn btn-danger" id="undo-last-create-btn">
+            Undo Last Event Creation
           </button>
         </div>
       </section>
