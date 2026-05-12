@@ -355,68 +355,94 @@ app.post('/api/csv/preview', requireProtectedAccess, upload.single('csvFile'), a
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
+    console.log('CSV preview: Starting to parse buffer...');
     const events = parseCSVFromBuffer(req.file.buffer);
+    console.log(`CSV preview: Parsed ${events.length} events`);
+    
     const fullSummary = getEventSummary(events);
+    console.log(`CSV preview: Summary complete - ${fullSummary.totalEvents} events, ${fullSummary.totalParticipants} participants`);
 
     // In live mode, pre-scan existing idempotency keys so preview focuses on importable events.
     if (!DEMO_MODE) {
-      const auth = getCalendarAuthClient();
-      const reminderCalendarId = String(process.env.REMINDER_CALENDAR_ID || '').trim();
-      const retentionCalendarId = String(process.env.RETENTION_CALENDAR_ID || '').trim();
+      try {
+        const auth = getCalendarAuthClient();
+        const reminderCalendarId = String(process.env.REMINDER_CALENDAR_ID || '').trim();
+        const retentionCalendarId = String(process.env.RETENTION_CALENDAR_ID || '').trim();
 
-      if (!reminderCalendarId || !retentionCalendarId) {
-        return res.status(500).json({
-          error: 'REMINDER_CALENDAR_ID and RETENTION_CALENDAR_ID must both be set for CSV previews.',
+        if (!reminderCalendarId || !retentionCalendarId) {
+          return res.status(500).json({
+            error: 'REMINDER_CALENDAR_ID and RETENTION_CALENDAR_ID must both be set for CSV previews.',
+          });
+        }
+
+        console.log('CSV preview: Partitioning events by idempotency...');
+        const { newEvents, duplicateEvents } = await partitionCSVEventsByIdempotency(auth, events, {
+          reminderCalendarId,
+          retentionCalendarId,
+        });
+        console.log(`CSV preview: Partition complete - ${newEvents.length} new, ${duplicateEvents.length} duplicates`);
+
+        const duplicateParticipants = duplicateEvents.reduce((acc, event) => {
+          const key = String(event.participantId || 'unknown');
+          acc[key] = (acc[key] || 0) + 1;
+          return acc;
+        }, {});
+
+        const summary = getEventSummary(newEvents);
+
+        return res.json({
+          success: true,
+          summary: {
+            ...summary,
+            importableEvents: summary.totalEvents,
+            duplicateEvents: duplicateEvents.length,
+            duplicateParticipants,
+            totalEventsAll: fullSummary.totalEvents,
+            totalParticipantsAll: fullSummary.totalParticipants,
+          },
+          sampleEvents: newEvents.slice(0, 10),
+          events: newEvents,
+          duplicateSampleEvents: duplicateEvents.slice(0, 10),
+        });
+      } catch (calendarError) {
+        console.error('Error during calendar idempotency check:', calendarError);
+        // Fall back to demo-like preview if calendar check fails
+        res.json({
+          success: true,
+          summary: {
+            ...fullSummary,
+            importableEvents: fullSummary.totalEvents,
+            duplicateEvents: 0,
+            duplicateParticipants: {},
+            totalEventsAll: fullSummary.totalEvents,
+            totalParticipantsAll: fullSummary.totalParticipants,
+          },
+          sampleEvents: events.slice(0, 10),
+          events,
+          duplicateSampleEvents: [],
         });
       }
-
-      const { newEvents, duplicateEvents } = await partitionCSVEventsByIdempotency(auth, events, {
-        reminderCalendarId,
-        retentionCalendarId,
-      });
-
-      const duplicateParticipants = duplicateEvents.reduce((acc, event) => {
-        const key = String(event.participantId || 'unknown');
-        acc[key] = (acc[key] || 0) + 1;
-        return acc;
-      }, {});
-
-      const summary = getEventSummary(newEvents);
-
-      return res.json({
+    } else {
+      // Demo mode preview keeps original behavior (all parsed events).
+      res.json({
         success: true,
         summary: {
-          ...summary,
-          importableEvents: summary.totalEvents,
-          duplicateEvents: duplicateEvents.length,
-          duplicateParticipants,
+          ...fullSummary,
+          importableEvents: fullSummary.totalEvents,
+          duplicateEvents: 0,
+          duplicateParticipants: {},
           totalEventsAll: fullSummary.totalEvents,
           totalParticipantsAll: fullSummary.totalParticipants,
         },
-        sampleEvents: newEvents.slice(0, 10),
-        events: newEvents,
-        duplicateSampleEvents: duplicateEvents.slice(0, 10),
+        sampleEvents: events.slice(0, 10),
+        events,
+        duplicateSampleEvents: [],
       });
     }
-
-    // Demo mode preview keeps original behavior (all parsed events).
-    res.json({
-      success: true,
-      summary: {
-        ...fullSummary,
-        importableEvents: fullSummary.totalEvents,
-        duplicateEvents: 0,
-        duplicateParticipants: {},
-        totalEventsAll: fullSummary.totalEvents,
-        totalParticipantsAll: fullSummary.totalParticipants,
-      },
-      sampleEvents: events.slice(0, 10),
-      events,
-      duplicateSampleEvents: [],
-    });
   } catch (error) {
-    console.error('Error previewing CSV:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Error previewing CSV:', error.message);
+    console.error('Stack trace:', error.stack);
+    res.status(500).json({ error: error.message || 'Failed to preview CSV' });
   }
 });
 
