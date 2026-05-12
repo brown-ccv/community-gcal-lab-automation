@@ -167,7 +167,7 @@ async function parseCsvFile(file) {
   }
 
   try {
-    showAlert('Parsing CSV file...', 'info');
+    showAlert('Parsing CSV file...', 'info', true);
     const formData = new FormData();
     formData.append('csvFile', file);
 

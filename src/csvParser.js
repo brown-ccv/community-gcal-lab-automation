@@ -100,11 +100,13 @@ export function parseCSV(filePath) {
     }
 
     const participantId = record.ID;
+    let hasAnyData = false; // Track if this participant has any event data
 
     // First pass: collect base dates for retention events
     for (const baseColumn of ['B2STARTDATE', 'B3STARTDATE', 'B4STARTDATE']) {
       const baseDate = record[baseColumn];
       if (baseDate && baseDate.trim() !== '') {
+        hasAnyData = true;
         if (!retentionBaseDates[participantId]) {
           retentionBaseDates[participantId] = {};
         }
@@ -121,6 +123,7 @@ export function parseCSV(filePath) {
         continue;
       }
 
+      hasAnyData = true;
       const metadata = getEventMetadata(column);
       
       // Only process reminder events in this pass (skip base dates)
@@ -136,6 +139,11 @@ export function parseCSV(filePath) {
         eventType: metadata.type,
         calendarType: metadata.calendarType,
       });
+    }
+
+    // Skip participants with no event data entirely
+    if (!hasAnyData && retentionBaseDates[participantId]) {
+      delete retentionBaseDates[participantId];
     }
   }
 
@@ -189,11 +197,13 @@ export function parseCSVFromBuffer(buffer) {
     }
 
     const participantId = record.ID;
+    let hasAnyData = false; // Track if this participant has any event data
 
     // First pass: collect base dates for retention events
     for (const baseColumn of ['B2STARTDATE', 'B3STARTDATE', 'B4STARTDATE']) {
       const baseDate = record[baseColumn];
       if (baseDate && baseDate.trim() !== '') {
+        hasAnyData = true;
         if (!retentionBaseDates[participantId]) {
           retentionBaseDates[participantId] = {};
         }
@@ -210,6 +220,7 @@ export function parseCSVFromBuffer(buffer) {
         continue;
       }
 
+      hasAnyData = true;
       const metadata = getEventMetadata(column);
       
       // Only process reminder events in this pass (skip base dates)
@@ -225,6 +236,11 @@ export function parseCSVFromBuffer(buffer) {
         eventType: metadata.type,
         calendarType: metadata.calendarType,
       });
+    }
+
+    // Skip participants with no event data entirely
+    if (!hasAnyData && retentionBaseDates[participantId]) {
+      delete retentionBaseDates[participantId];
     }
   }
 

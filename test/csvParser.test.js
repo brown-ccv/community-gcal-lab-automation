@@ -64,3 +64,35 @@ test('getEventSummary returns participant and per-title counts', () => {
   assert.equal(summary.eventsByType['BURST 1 Pre-BURST Checklist'], 2);
   assert.equal(summary.eventsByType['BURST 2 Retention Text'], 1);
 });
+
+test('parseCSVFromBuffer skips participants with all empty date fields', () => {
+  const rows = [
+    '701,Active,01/01/2026,01/10/2026,01/11/2026,02/01/2026,02/10/2026,02/11/2026,03/01/2026,03/10/2026,03/11/2026,04/01/2026,04/10/2026,04/11/2026',
+    '717,Active,,,,,,,,,,,,',  // All empty dates - should be skipped
+    '718,Active,,,,,,,,,,,,',  // All empty dates - should be skipped
+  ];
+
+  const csv = [header, ...rows].join('\n');
+  const events = parseCSVFromBuffer(Buffer.from(csv, 'utf-8'));
+
+  assert.equal(events.every((event) => event.participantId === '701'), true);
+  assert.equal(events.some((event) => event.participantId === '717'), false);
+  assert.equal(events.some((event) => event.participantId === '718'), false);
+});
+
+test('parseCSVFromBuffer skips empty date rows mixed with valid participants', () => {
+  const rows = [
+    '701,Active,01/01/2026,01/10/2026,01/11/2026,02/01/2026,02/10/2026,02/11/2026,03/01/2026,03/10/2026,03/11/2026,04/01/2026,04/10/2026,04/11/2026',
+    '702,Active,,,,,,,,,,,,',  // All empty - skip
+    '703,Active,01/05/2026,,01/15/2026,,,,,,,,,',  // Partial data - should create events for non-empty dates
+  ];
+
+  const csv = [header, ...rows].join('\n');
+  const events = parseCSVFromBuffer(Buffer.from(csv, 'utf-8'));
+  const summary = getEventSummary(events);
+
+  // Should have 701 (11 events: 8 reminders + 3 retentions) + 703 (events from partial dates)
+  assert.equal(summary.totalParticipants, 2);
+  assert.equal(events.some((event) => event.participantId === '702'), false);
+  assert.equal(events.some((event) => event.participantId === '703'), true);
+});
