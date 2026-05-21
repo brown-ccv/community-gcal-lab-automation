@@ -38,7 +38,7 @@
     <main class="layout-grid">
       <section class="card primary-card">
         <div class="card-heading">
-          <h2 id="step1-title">Step 1: Import CSV Schedule</h2>
+          <h2 id="step1-title">Import CSV Schedule</h2>
           <p class="help-text" id="step1-help">Upload a FileMaker CSV and preview all events before creating them.</p>
         </div>
 
@@ -65,6 +65,12 @@
                   <span style="color: #5f6b7a; font-weight: normal;">(recommended for testing)</span>
                 </span>
               </label>
+            </div>
+
+            <div id="csv-participants-to-add-box" class="preview-box" style="display:none;">
+              <strong>Participants to be Added</strong>
+              <p><small id="csv-participants-to-add-summary">0 participant(s) will have new events created.</small></p>
+              <div id="csv-participants-to-add" class="csv-event-types-list"></div>
             </div>
 
             <div id="csv-duplicates-box" class="preview-box" style="display:none;">
@@ -169,7 +175,7 @@
       <section class="stack-column">
         <div class="card compact-card warning-card" id="clear-demo-card">
           <div class="card-heading">
-            <h2>Step 2: Clear Demo Events</h2>
+            <h2>Clear Demo Events</h2>
             <p class="help-text">Remove all events tagged as demo mode.</p>
           </div>
           <p class="notice-text">This action is permanent and cannot be undone.</p>
@@ -178,7 +184,28 @@
 
         <div class="card compact-card">
           <div class="card-heading">
-            <h2 id="undo-create-title">Step 3: Undo Last Event Creation</h2>
+            <h2>Delete Events by Participant</h2>
+            <p class="help-text">Remove all events for specific participants by their ID.</p>
+          </div>
+          <div class="form-group">
+            <label for="participant-ids-input">Participant ID(s) <span class="required">*</span></label>
+            <input 
+              type="text" 
+              id="participant-ids-input" 
+              name="participant-ids" 
+              placeholder="e.g., P1 or P1, P2, P3"
+              required
+            >
+            <small class="help-text">Enter one or more participant IDs separated by commas. This will delete ALL events for these participants.</small>
+          </div>
+          <button type="button" class="btn btn-danger" id="delete-by-participant-btn">
+            Delete Events
+          </button>
+        </div>
+
+        <div class="card compact-card">
+          <div class="card-heading">
+            <h2 id="undo-create-title">Undo Last Event Creation</h2>
             <p class="help-text">Undo the most recent create/import action by deleting only the events created in that batch.</p>
           </div>
 

@@ -30,7 +30,7 @@ function setSchedulerMode(mode, updateUrl = true) {
   }
 
   if (step1Title) {
-    step1Title.textContent = isCsv ? 'Step 1: Import CSV Schedule' : 'Step 1: Create Check-In Events';
+    step1Title.textContent = isCsv ? 'Import CSV Schedule' : 'Create Check-In Events';
   }
   if (step1Help) {
     step1Help.textContent = isCsv
@@ -65,6 +65,9 @@ function renderCsvPreview(preview) {
   const totalEvents = document.getElementById('csv-total-events');
   const eventTypesList = document.getElementById('csv-event-types-list');
   const sampleEvents = document.getElementById('csv-sample-events');
+  const participantsToAddBox = document.getElementById('csv-participants-to-add-box');
+  const participantsToAddSummary = document.getElementById('csv-participants-to-add-summary');
+  const participantsToAddList = document.getElementById('csv-participants-to-add');
   const duplicatesBox = document.getElementById('csv-duplicates-box');
   const duplicateSummary = document.getElementById('csv-duplicate-summary');
   const duplicateParticipants = document.getElementById('csv-duplicate-participants');
@@ -94,6 +97,37 @@ function renderCsvPreview(preview) {
     `;
     sampleEvents.appendChild(card);
   });
+
+  // Render participants to be added
+  if (participantsToAddBox && participantsToAddSummary && participantsToAddList) {
+    const events = preview.events || preview.sampleEvents || [];
+    const participantIds = new Set();
+    
+    // Collect unique participant IDs from events that will be created
+    events.forEach((event) => {
+      if (event.participantId) {
+        participantIds.add(String(event.participantId));
+      }
+    });
+
+    if (participantIds.size > 0) {
+      participantsToAddSummary.textContent = `${participantIds.size} participant(s) will have new events created.`;
+      participantsToAddList.innerHTML = '';
+
+      [...participantIds]
+        .sort((a, b) => String(a).localeCompare(String(b)))
+        .forEach((participantId) => {
+          const row = document.createElement('div');
+          row.className = 'csv-event-type-item';
+          row.innerHTML = `<span>Participant ${participantId}</span><strong>✓</strong>`;
+          participantsToAddList.appendChild(row);
+        });
+
+      participantsToAddBox.style.display = 'block';
+    } else {
+      participantsToAddBox.style.display = 'none';
+    }
+  }
   
   if (duplicatesBox && duplicateSummary && duplicateParticipants) {
     const duplicateEvents = preview.duplicateSampleEvents || [];
@@ -143,6 +177,7 @@ function resetCsvPreview() {
   const previewSection = document.getElementById('csv-preview-section');
   const fileInput = document.getElementById('csv-file-input');
   const reportBox = document.getElementById('csv-import-report');
+  const participantsToAddBox = document.getElementById('csv-participants-to-add-box');
   const duplicatesBox = document.getElementById('csv-duplicates-box');
   if (previewSection) {
     previewSection.style.display = 'none';
@@ -150,6 +185,9 @@ function resetCsvPreview() {
   if (reportBox) {
     reportBox.style.display = 'none';
     reportBox.innerHTML = '';
+  }
+  if (participantsToAddBox) {
+    participantsToAddBox.style.display = 'none';
   }
   if (duplicatesBox) {
     duplicatesBox.style.display = 'none';
@@ -447,8 +485,8 @@ function applyDemoModeVisibility() {
 
   if (undoCreateTitle) {
     undoCreateTitle.textContent = IS_DEMO_MODE
-      ? 'Step 3: Undo Last Event Creation'
-      : 'Step 2: Undo Last Event Creation';
+      ? 'Undo Last Event Creation'
+      : 'Undo Last Event Creation';
   }
 
   if (!IS_DEMO_MODE) {
@@ -895,6 +933,107 @@ document.getElementById('undo-last-create-btn').addEventListener('click', async 
   } finally {
     undoBtn.disabled = false;
     undoBtn.textContent = originalText;
+  }
+});
+
+// Delete events by participant handler
+document.getElementById('delete-by-participant-btn').addEventListener('click', async function() {
+  const input = document.getElementById('participant-ids-input');
+  const participantIdsText = input?.value?.trim();
+  
+  if (!participantIdsText) {
+    showAlert('Please enter at least one participant ID.', 'error');
+    return;
+  }
+
+  // Parse participant IDs (comma-separated)
+  const participantIds = participantIdsText
+    .split(',')
+    .map(id => id.trim())
+    .filter(id => id.length > 0);
+
+  if (participantIds.length === 0) {
+    showAlert('Please enter valid participant ID(s).', 'error');
+    return;
+  }
+
+  // Confirmation dialog
+  const message = `This will permanently delete ALL events for ${participantIds.length} participant(s):\n\n${participantIds.join(', ')}\n\nThis action cannot be undone through the UI, but you can use the "Undo Last Event Creation" button if needed.\n\nContinue?`;
+  if (!confirm(message)) {
+    return;
+  }
+
+  const deleteBtn = this;
+  const originalText = deleteBtn.textContent;
+  deleteBtn.disabled = true;
+  deleteBtn.innerHTML = '<span class="loading-spinner"></span>Deleting events...';
+
+  try {
+    if (IS_DEMO_MODE) {
+      await new Promise(resolve => setTimeout(resolve, 1200));
+      const message = `[DEMO] Would have deleted all events for participant(s): ${participantIds.join(', ')}\n\n` +
+                     `Note: This is a demo interface. Run with 'npm start' for full functionality.`;
+      showAlert(message, 'success', true);
+      input.value = '';
+      return;
+    }
+
+    const response = await fetch('/api/delete-by-participant', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ participantIds }),
+      redirect: 'manual'
+    });
+
+    if (response.status === 302 || response.status === 0) {
+      window.location.href = '/authorize';
+      return;
+    }
+
+    if (!response.ok) {
+      let errorMessage = 'Failed to delete events';
+      try {
+        const error = await response.json();
+        errorMessage = error.error || errorMessage;
+      } catch (e) {
+        errorMessage = response.statusText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    let data;
+    try {
+      data = await response.json();
+    } catch (e) {
+      console.error('Failed to parse JSON response:', e);
+      throw new Error('Server returned an invalid response. Please try again.');
+    }
+    
+    if (data.success) {
+      let message = '';
+      if (data.deleted > 0) {
+        message = `Successfully deleted ${data.deleted} event(s) for ${data.participantsProcessed} participant(s).\n\n`;
+        message += `Participants: ${participantIds.join(', ')}\n\n`;
+        message += `You can use "Undo Last Event Creation" to restore these events if needed.`;
+      } else {
+        message = `No events found for participant(s): ${participantIds.join(', ')}`;
+      }
+      
+      if (data.errors > 0) {
+        message += `\n\nWarning: ${data.errors} error(s) occurred. Details in console.`;
+        console.error('Error details:', data.errorDetails);
+      }
+      
+      showAlert(message, data.errors > 0 ? 'error' : 'success', true);
+      input.value = '';
+    }
+    
+  } catch (error) {
+    console.error('Error:', error);
+    showAlert(`Error: ${error.message}`, 'error');
+  } finally {
+    deleteBtn.disabled = false;
+    deleteBtn.textContent = originalText;
   }
 });
 

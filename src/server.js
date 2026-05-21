@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 import { google } from 'googleapis';
 import multer from 'multer';
 import dotenv from 'dotenv';
-import { createEvents, deleteAllDemoEvents, createEventsFromCSV, undoCreatedEvents, partitionCSVEventsByIdempotency } from './calendar.js';
+import { createEvents, deleteAllDemoEvents, deleteEventsByParticipantId, createEventsFromCSV, undoCreatedEvents, partitionCSVEventsByIdempotency } from './calendar.js';
 import { parseCSVFromBuffer, getEventSummary } from './csvParser.js';
 import { extractProxyIdentity, getAuthenticatedEmail, requireAuth, requireGroupMember, isAuthBypassed } from './middleware/auth.js';
 import { configurePassport, createAuthRoutes } from './routes/auth.js';
@@ -552,6 +552,41 @@ app.post('/api/undo-last-creation', requireProtectedAccess, async (req, res) => 
     });
   } catch (error) {
     console.error('Error undoing created events:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete events by participant ID (PROTECTED)
+app.post('/api/delete-by-participant', requireProtectedAccess, async (req, res) => {
+  try {
+    if (DEMO_MODE) {
+      const { participantIds } = req.body;
+      return res.json({
+        success: true,
+        demo: true,
+        deleted: participantIds?.length * 3 || 0, // Assume 3 events per participant in demo
+        participantsProcessed: participantIds?.length || 0,
+        message: '[DEMO] Delete by participant simulated. No calendar events were removed.',
+      });
+    }
+
+    const { participantIds } = req.body;
+    if (!participantIds || !Array.isArray(participantIds) || participantIds.length === 0) {
+      return res.status(400).json({ error: 'participantIds must be a non-empty array.' });
+    }
+
+    const auth = getCalendarAuthClient();
+    const results = await deleteEventsByParticipantId(auth, { participantIds });
+
+    res.json({
+      success: true,
+      deleted: results.deleted,
+      errors: results.errors,
+      participantsProcessed: results.participantsProcessed,
+      errorDetails: results.errorDetails,
+    });
+  } catch (error) {
+    console.error('Error deleting events by participant:', error);
     res.status(500).json({ error: error.message });
   }
 });

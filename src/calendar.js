@@ -349,8 +349,89 @@ export async function undoCreatedEvents(auth, { events = [] } = {}) {
 }
 
 /**
- * Build idempotency key for CSV event
+ * Delete all events for specific participants by their ID
+ * @param {OAuth2Client} auth - Authorized Google OAuth2 client
+ * @param {Object} options
+ * @param {Array<string>} options.participantIds - Participant IDs to delete events for
+ * @param {string|Array<string>} options.calendarIds - Calendar ID(s) to search (default: 'primary')
+ * @returns {Promise<Object>} Results with deleted count
  */
+export async function deleteEventsByParticipantId(auth, { participantIds = [], calendarIds = 'primary' } = {}) {
+  const calendar = google.calendar({ version: 'v3', auth });
+  const results = { deleted: 0, errors: 0, errorDetails: [], participantsProcessed: 0 };
+  
+  // Normalize participant IDs
+  const normalizedParticipantIds = Array.isArray(participantIds)
+    ? [...new Set(participantIds.map(id => String(id || '').trim()).filter(Boolean))]
+    : [];
+
+  if (normalizedParticipantIds.length === 0) {
+    return results;
+  }
+
+  // Normalize calendar IDs
+  const normalizedCalendarIds = Array.isArray(calendarIds)
+    ? [...new Set(calendarIds.map(id => String(id || '').trim()).filter(Boolean))]
+    : [String(calendarIds || 'primary').trim() || 'primary'];
+
+  try {
+    let allParticipantEvents = [];
+
+    // Search for events with matching participant IDs
+    for (const targetCalendarId of normalizedCalendarIds) {
+      for (const participantId of normalizedParticipantIds) {
+        try {
+          const response = await calendar.events.list({
+            calendarId: targetCalendarId,
+            q: `ParticipantId - ${participantId}`, // Search by title prefix
+            maxResults: 2500,
+            singleEvents: true,
+          });
+
+          const events = response.data.items || [];
+          const participantEvents = events
+            .filter(event => {
+              // Only delete events that were created by this automation (have extended properties)
+              return event.extendedProperties?.private?.source !== undefined;
+            })
+            .map(event => ({ ...event, _calendarId: targetCalendarId, _participantId: participantId }));
+
+          allParticipantEvents = allParticipantEvents.concat(participantEvents);
+        } catch (error) {
+          console.error(`Error searching for participant ${participantId}:`, error.message);
+        }
+      }
+    }
+
+    results.participantsProcessed = normalizedParticipantIds.length;
+    console.log(`Found ${allParticipantEvents.length} events to delete for participants: ${normalizedParticipantIds.join(', ')}`);
+
+    // Delete each event
+    for (const event of allParticipantEvents) {
+      try {
+        await calendar.events.delete({
+          calendarId: event._calendarId || 'primary',
+          eventId: event.id,
+          sendUpdates: 'all', // Notify attendees of cancellation
+        });
+        results.deleted++;
+      } catch (error) {
+        results.errors++;
+        results.errorDetails.push({
+          eventId: event.id,
+          calendarId: event._calendarId,
+          participantId: event._participantId,
+          summary: event.summary,
+          error: error.message,
+        });
+      }
+    }
+
+    return results;
+  } catch (error) {
+    throw new Error(`Failed to delete events by participant: ${error.message}`);
+  }
+}
 function buildCSVEventKey(participantId, date, column) {
   // Format: "701_11-2-2025_B2STARTMIN10"
   const datePart = date.replace(/\//g, '-');

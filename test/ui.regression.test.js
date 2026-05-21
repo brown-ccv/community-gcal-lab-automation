@@ -24,7 +24,7 @@ test('live mode removes clear demo card and renumbers undo section', () => {
   const source = getScriptSource();
 
   assert.match(source, /clearDemoCard\.remove\(\);/);
-  assert.match(source, /'Step 3: Undo Last Event Creation'/);
+  assert.match(source, /'Undo Last Event Creation'/);
 });
 
 test('csv import flow keeps post-import report visible in live mode', () => {
