@@ -77,6 +77,34 @@ function calculateRetentionDate(baseDateStr) {
 }
 
 /**
+ * Calculate compliance date (14 days after base date)
+ * @param {string} baseDateStr - Date in MM/DD/YYYY format
+ * @returns {string|null} - Date in MM/DD/YYYY format, or null if invalid
+ */
+export function calculateComplianceDate(baseDateStr) {
+  try {
+    const [month, day, year] = baseDateStr.split('/').map(s => parseInt(s.trim(), 10));
+
+    if (isNaN(month) || isNaN(day) || isNaN(year)) {
+      return null;
+    }
+
+    const baseDate = new Date(year, month - 1, day);
+
+    baseDate.setDate(baseDate.getDate() + 14);
+
+    const complianceMonth = String(baseDate.getMonth() + 1).padStart(2, '0');
+    const complianceDay = String(baseDate.getDate()).padStart(2, '0');
+    const complianceYear = baseDate.getFullYear();
+
+    return `${complianceMonth}/${complianceDay}/${complianceYear}`;
+  } catch (error) {
+    console.error(`Error calculating compliance date from ${baseDateStr}:`, error);
+    return null;
+  }
+}
+
+/**
  * Parse CSV file and extract events
  * @param {string} filePath - Path to CSV file
  * @returns {Array} Array of event objects
@@ -102,8 +130,8 @@ export function parseCSV(filePath) {
     const participantId = record.ID;
     let hasAnyData = false; // Track if this participant has any event data
 
-    // First pass: collect base dates for retention events
-    for (const baseColumn of ['B2STARTDATE', 'B3STARTDATE', 'B4STARTDATE']) {
+    // First pass: collect base dates for retention and compliance events
+    for (const baseColumn of ['B1STARTDATE', 'B2STARTDATE', 'B3STARTDATE', 'B4STARTDATE']) {
       const baseDate = record[baseColumn];
       if (baseDate && baseDate.trim() !== '') {
         hasAnyData = true;
@@ -147,24 +175,39 @@ export function parseCSV(filePath) {
     }
   }
 
-  // Third pass: create retention events based on base dates
+  // Third pass: create retention and compliance events based on base dates
   for (const [participantId, baseDates] of Object.entries(retentionBaseDates)) {
     for (const [baseColumn, baseDate] of Object.entries(baseDates)) {
       // Extract BURST number from column name (e.g., 'B2STARTDATE' -> '2')
       const burstNumber = baseColumn.charAt(1);
       
-      // Calculate retention date (45 days before base date)
-      const retentionDate = calculateRetentionDate(baseDate);
-      
-      if (retentionDate) {
+      // Calculate retention date (45 days before base date) - only for Bursts 2, 3, 4
+      if (burstNumber !== '1') {
+        const retentionDate = calculateRetentionDate(baseDate);
+        if (retentionDate) {
+          events.push({
+            participantId,
+            title: `BURST ${burstNumber} Retention Text`,
+            date: retentionDate,
+            column: baseColumn,
+            eventType: 'retention',
+            calendarType: 'retention',
+            baseDate: baseDate,
+          });
+        }
+      }
+
+      // Calculate compliance date (14 days after base date) for all 4 bursts
+      const complianceDate = calculateComplianceDate(baseDate);
+      if (complianceDate) {
         events.push({
           participantId,
-          title: `BURST ${burstNumber} Retention Text`,
-          date: retentionDate,
+          title: `BURST ${burstNumber} Week 2 Compliance Tracking`,
+          date: complianceDate,
           column: baseColumn,
-          eventType: 'retention',
+          eventType: 'compliance',
           calendarType: 'retention',
-          baseDate: baseDate, // Keep original base date for reference
+          baseDate: baseDate,
         });
       }
     }
@@ -199,8 +242,8 @@ export function parseCSVFromBuffer(buffer) {
     const participantId = record.ID;
     let hasAnyData = false; // Track if this participant has any event data
 
-    // First pass: collect base dates for retention events
-    for (const baseColumn of ['B2STARTDATE', 'B3STARTDATE', 'B4STARTDATE']) {
+    // First pass: collect base dates for retention and compliance events
+    for (const baseColumn of ['B1STARTDATE', 'B2STARTDATE', 'B3STARTDATE', 'B4STARTDATE']) {
       const baseDate = record[baseColumn];
       if (baseDate && baseDate.trim() !== '') {
         hasAnyData = true;
@@ -244,24 +287,39 @@ export function parseCSVFromBuffer(buffer) {
     }
   }
 
-  // Third pass: create retention events based on base dates
+  // Third pass: create retention and compliance events based on base dates
   for (const [participantId, baseDates] of Object.entries(retentionBaseDates)) {
     for (const [baseColumn, baseDate] of Object.entries(baseDates)) {
       // Extract BURST number from column name (e.g., 'B2STARTDATE' -> '2')
       const burstNumber = baseColumn.charAt(1);
       
-      // Calculate retention date (45 days before base date)
-      const retentionDate = calculateRetentionDate(baseDate);
-      
-      if (retentionDate) {
+      // Calculate retention date (45 days before base date) - only for Bursts 2, 3, 4
+      if (burstNumber !== '1') {
+        const retentionDate = calculateRetentionDate(baseDate);
+        if (retentionDate) {
+          events.push({
+            participantId,
+            title: `BURST ${burstNumber} Retention Text`,
+            date: retentionDate,
+            column: baseColumn,
+            eventType: 'retention',
+            calendarType: 'retention',
+            baseDate: baseDate,
+          });
+        }
+      }
+
+      // Calculate compliance date (14 days after base date) for all 4 bursts
+      const complianceDate = calculateComplianceDate(baseDate);
+      if (complianceDate) {
         events.push({
           participantId,
-          title: `BURST ${burstNumber} Retention Text`,
-          date: retentionDate,
+          title: `BURST ${burstNumber} Week 2 Compliance Tracking`,
+          date: complianceDate,
           column: baseColumn,
-          eventType: 'retention',
+          eventType: 'compliance',
           calendarType: 'retention',
-          baseDate: baseDate, // Keep original base date for reference
+          baseDate: baseDate,
         });
       }
     }

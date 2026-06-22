@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { google } from 'googleapis';
-import { createEvents, createEventsFromCSV, undoCreatedEvents, partitionCSVEventsByIdempotency } from '../src/calendar.js';
+import { createEvents, createEventsFromCSV, undoCreatedEvents, partitionCSVEventsByIdempotency, shiftWeekendDateMonday } from '../src/calendar.js';
 
 function createMockCalendar(overrides = {}) {
   const listCalls = [];
@@ -251,6 +251,38 @@ test('undoCreatedEvents deletes only the exact events passed in', async () => {
   );
 
   google.calendar = originalCalendarFactory;
+});
+
+test('shiftWeekendDateMonday shifts Saturday to Monday', () => {
+  // 10/04/2025 is a Saturday
+  const result = shiftWeekendDateMonday('10/04/2025');
+  assert.equal(result.adjustedDate, '10/06/2025');
+  assert.equal(result.wasShifted, true);
+  assert.equal(result.shiftedTo, 'Monday');
+});
+
+test('shiftWeekendDateMonday shifts Sunday to Monday', () => {
+  // 10/05/2025 is a Sunday
+  const result = shiftWeekendDateMonday('10/05/2025');
+  assert.equal(result.adjustedDate, '10/06/2025');
+  assert.equal(result.wasShifted, true);
+  assert.equal(result.shiftedTo, 'Monday');
+});
+
+test('shiftWeekendDateMonday does not shift weekday', () => {
+  // 10/06/2025 is a Monday
+  const result = shiftWeekendDateMonday('10/06/2025');
+  assert.equal(result.adjustedDate, '10/06/2025');
+  assert.equal(result.wasShifted, false);
+  assert.equal(result.shiftedTo, null);
+});
+
+test('shiftWeekendDateMonday does not shift Friday', () => {
+  // 10/10/2025 is a Friday
+  const result = shiftWeekendDateMonday('10/10/2025');
+  assert.equal(result.adjustedDate, '10/10/2025');
+  assert.equal(result.wasShifted, false);
+  assert.equal(result.shiftedTo, null);
 });
 
 test('partitionCSVEventsByIdempotency returns only new events for preview', async () => {

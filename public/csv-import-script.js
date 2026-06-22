@@ -37,16 +37,19 @@ function shiftWeekendToFriday(dateStr) {
   
   let wasShifted = false;
   const originalDate = dateStr;
+  let shiftedTo = null;
   
   // If Saturday (6), shift back 1 day to Friday
   if (dayOfWeek === 6) {
     date.setDate(date.getDate() - 1);
     wasShifted = true;
+    shiftedTo = 'Friday';
   }
   // If Sunday (0), shift back 2 days to Friday
   else if (dayOfWeek === 0) {
     date.setDate(date.getDate() - 2);
     wasShifted = true;
+    shiftedTo = 'Friday';
   }
   
   const newMonth = String(date.getMonth() + 1).padStart(2, '0');
@@ -54,7 +57,31 @@ function shiftWeekendToFriday(dateStr) {
   const newYear = date.getFullYear();
   const adjustedDate = `${newMonth}/${newDay}/${newYear}`;
   
-  return { adjustedDate, wasShifted, originalDate };
+  return { adjustedDate, wasShifted, originalDate, shiftedTo };
+}
+
+// Shift weekend dates to the following Monday (for compliance events)
+function shiftWeekendToMonday(dateStr) {
+  const [month, day, year] = dateStr.split('/').map(s => parseInt(s.trim(), 10));
+  const date = new Date(year, month - 1, day);
+  const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
+  
+  let wasShifted = false;
+  const originalDate = dateStr;
+  let shiftedTo = null;
+  
+  if (dayOfWeek === 6 || dayOfWeek === 0) {
+    date.setDate(date.getDate() + (dayOfWeek === 6 ? 2 : 1));
+    wasShifted = true;
+    shiftedTo = 'Monday';
+  }
+  
+  const newMonth = String(date.getMonth() + 1).padStart(2, '0');
+  const newDay = String(date.getDate()).padStart(2, '0');
+  const newYear = date.getFullYear();
+  const adjustedDate = `${newMonth}/${newDay}/${newYear}`;
+  
+  return { adjustedDate, wasShifted, originalDate, shiftedTo };
 }
 
 // Check demo mode on page load
@@ -238,20 +265,22 @@ async function importCSV() {
       
       const { summary, sampleEvents } = currentPreviewData.data;
       
-      // Count reminder and retention events from the actual event data
+      // Count reminder, retention, and compliance events from the actual event data
       const allEvents = currentPreviewData.data.events || [];
       const reminderCount = allEvents.filter(e => e.eventType === 'reminder').length;
       const retentionCount = allEvents.filter(e => e.eventType === 'retention').length;
+      const complianceCount = allEvents.filter(e => e.eventType === 'compliance').length;
       
       // Generate demo report data (simulate all events with proper date shifting and metadata)
       const demoResults = {
         created: summary.totalEvents,
         reminderEvents: reminderCount,
         retentionEvents: retentionCount,
+        complianceEvents: complianceCount,
         skipped: 0,
         errors: 0,
         details: allEvents.map(event => {
-          const shifted = shiftWeekendToFriday(event.date);
+          const shifted = event.eventType === 'compliance' ? shiftWeekendToMonday(event.date) : shiftWeekendToFriday(event.date);
           return {
             type: 'created',
             participantId: event.participantId,
@@ -259,6 +288,7 @@ async function importCSV() {
             date: shifted.adjustedDate,
             wasShifted: shifted.wasShifted,
             originalDate: shifted.originalDate,
+            shiftedTo: shifted.wasShifted ? shifted.shiftedTo : null,
             calendarType: event.calendarType,
             eventType: event.eventType,
             hasAttendees: false, // Demo mode doesn't send attendees
@@ -270,19 +300,20 @@ async function importCSV() {
       message += `Event breakdown:\n`;
       message += `• Reminder events: ${reminderCount}\n`;
       message += `• Retention events: ${retentionCount}\n`;
+      message += `• Compliance events: ${complianceCount}\n`;
       message += `• Attendees: Disabled (demo mode)\n\n`;
       
       // Show sample event details (with shifted dates)
       message += `Sample events that would be created:\n\n`;
       const shiftedSamples = sampleEvents.slice(0, 3).map(event => {
-        const shifted = shiftWeekendToFriday(event.date);
+        const shifted = event.eventType === 'compliance' ? shiftWeekendToMonday(event.date) : shiftWeekendToFriday(event.date);
         return { ...event, shifted };
       });
       
       shiftedSamples.forEach(({ participantId, title, shifted, eventType, calendarType }) => {
         const shiftNote = shifted.wasShifted ? ` (shifted from ${shifted.originalDate})` : '';
         const calendar = calendarType ? ` [${calendarType.charAt(0).toUpperCase() + calendarType.slice(1)}]` : '';
-        const timeStr = eventType === 'retention' ? 'All-day' : '9:00 AM';
+        const timeStr = (eventType === 'retention' || eventType === 'compliance') ? 'All-day' : '9:00 AM';
         message += `${participantId} - ${title}${calendar}\n`;
         message += `   Date: ${shifted.adjustedDate}${shiftNote} at ${timeStr}\n\n`;
       });
@@ -337,6 +368,9 @@ async function importCSV() {
       }
       if (results.retentionEvents !== undefined) {
         message += `  → Retention: ${results.retentionEvents}\n`;
+      }
+      if (results.complianceEvents !== undefined) {
+        message += `  → Compliance: ${results.complianceEvents}\n`;
       }
       
       message += `• Skipped (already exist): ${results.skipped}\n` +
@@ -424,6 +458,9 @@ function generateImportReport(results) {
   }
   if (results.retentionEvents !== undefined) {
     report += `  • Retention Events: ${results.retentionEvents}\n`;
+  }
+  if (results.complianceEvents !== undefined) {
+    report += `  • Compliance Events: ${results.complianceEvents}\n`;
   }
   report += `Total Skipped: ${results.skipped}\n`;
   report += `Total Errors: ${results.errors}\n`;
@@ -535,6 +572,9 @@ function displayImportReport(reportText, results) {
   if (results.retentionEvents !== undefined) {
     summaryHTML += `  &nbsp;&nbsp;→ Retention Events: ${results.retentionEvents}<br>`;
   }
+  if (results.complianceEvents !== undefined) {
+    summaryHTML += `  &nbsp;&nbsp;→ Compliance Events: ${results.complianceEvents}<br>`;
+  }
   
   summaryHTML += `
     • Skipped: ${results.skipped}<br>
@@ -569,7 +609,7 @@ function displayImportReport(reportText, results) {
         // Add event type
         if (event.eventType) {
           const eventTypeName = event.eventType.charAt(0).toUpperCase() + event.eventType.slice(1);
-          const typeColor = event.eventType === 'retention' ? '#2196f3' : '#4caf50';
+          const typeColor = event.eventType === 'retention' ? '#2196f3' : event.eventType === 'compliance' ? '#9c27b0' : '#4caf50';
           eventHTML += `  Type: <span style="color: ${typeColor}; font-weight: bold;">${eventTypeName}</span><br>`;
         }
         

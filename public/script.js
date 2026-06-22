@@ -277,16 +277,31 @@ async function importCsvFromStep1() {
 
     if (payload.demo) {
       const previewEvents = currentCsvPreviewData?.payload?.events || [];
+      const reminderCount = previewEvents.filter(e => e.eventType === 'reminder').length;
+      const retentionCount = previewEvents.filter(e => e.eventType === 'retention').length;
+      const complianceCount = previewEvents.filter(e => e.eventType === 'compliance').length;
       const demoResults = {
         created: previewEvents.length,
+        reminderEvents: reminderCount,
+        retentionEvents: retentionCount,
+        complianceEvents: complianceCount,
         skipped: 0,
         errors: 0,
-        details: previewEvents.map((event) => ({
-          type: 'created',
-          title: event.title,
-          date: event.date,
-          participantId: event.participantId,
-        })),
+        details: previewEvents.map((event) => {
+          const shifted = event.eventType === 'compliance' ? shiftWeekendDateMonday(event.date) : shiftWeekendDate(event.date);
+          return {
+            type: 'created',
+            title: `${event.participantId} - ${event.title}`,
+            date: shifted.adjustedDate,
+            wasShifted: shifted.wasShifted,
+            originalDate: shifted.originalDate,
+            shiftedTo: shifted.wasShifted ? shifted.shiftedTo : null,
+            participantId: event.participantId,
+            calendarType: event.calendarType,
+            eventType: event.eventType,
+            hasAttendees: false,
+          };
+        }),
       };
 
       displayCsvImportReport(demoResults);
@@ -385,14 +400,17 @@ function shiftWeekendDate(dateStr) {
   
   let wasShifted = false;
   const originalDate = dateStr;
+  let shiftedTo = null;
   
   // If Saturday (6) or Sunday (0), shift back to Friday
   if (dayOfWeek === 6) {
     date.setDate(date.getDate() - 1);
     wasShifted = true;
+    shiftedTo = 'Friday';
   } else if (dayOfWeek === 0) {
     date.setDate(date.getDate() - 2);
     wasShifted = true;
+    shiftedTo = 'Friday';
   }
   
   const newMonth = String(date.getMonth() + 1).padStart(2, '0');
@@ -400,8 +418,33 @@ function shiftWeekendDate(dateStr) {
   const newYear = date.getFullYear();
   const adjustedDate = `${newMonth}/${newDay}/${newYear}`;
   
-  return { adjustedDate, wasShifted, originalDate };
+  return { adjustedDate, wasShifted, originalDate, shiftedTo };
 }
+
+// Shift weekend dates to Monday (for compliance events)
+function shiftWeekendDateMonday(dateStr) {
+  const [month, day, year] = dateStr.split('/').map(s => parseInt(s.trim(), 10));
+  const date = new Date(year, month - 1, day);
+  const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
+  
+  let wasShifted = false;
+  const originalDate = dateStr;
+  let shiftedTo = null;
+  
+  if (dayOfWeek === 6 || dayOfWeek === 0) {
+    date.setDate(date.getDate() + (dayOfWeek === 6 ? 2 : 1));
+    wasShifted = true;
+    shiftedTo = 'Monday';
+  }
+  
+  const newMonth = String(date.getMonth() + 1).padStart(2, '0');
+  const newDay = String(date.getDate()).padStart(2, '0');
+  const newYear = date.getFullYear();
+  const adjustedDate = `${newMonth}/${newDay}/${newYear}`;
+  
+  return { adjustedDate, wasShifted, originalDate, shiftedTo };
+}
+
 
 // Check authentication status and show user info
 (async function checkAuthStatus() {
@@ -1169,6 +1212,15 @@ function generateCsvImportReport(results) {
   report += `${'='.repeat(60)}\n\n`;
   report += `SUMMARY:\n`;
   report += `Created: ${results.created || 0}\n`;
+  if (results.reminderEvents !== undefined) {
+    report += `  • Reminder Events: ${results.reminderEvents}\n`;
+  }
+  if (results.retentionEvents !== undefined) {
+    report += `  • Retention Events: ${results.retentionEvents}\n`;
+  }
+  if (results.complianceEvents !== undefined) {
+    report += `  • Compliance Events: ${results.complianceEvents}\n`;
+  }
   report += `Skipped (duplicates): ${results.skipped || 0}\n`;
   report += `Errors: ${results.errors || 0}\n\n`;
 
@@ -1266,9 +1318,13 @@ function displayCsvImportReport(results) {
     `
     : '';
 
+  const complianceLine = results.complianceEvents !== undefined
+    ? ` | Compliance: ${results.complianceEvents}`
+    : '';
+
   reportContainer.innerHTML = `
     <strong>Import Summary</strong>
-    <p><small>Created: ${created} | Skipped: ${skipped} | Errors: ${errors}</small></p>
+    <p><small>Created: ${created} | Skipped: ${skipped} | Errors: ${errors}${complianceLine}</small></p>
     ${weekendShiftHtml}
     <details>
       <summary>View detailed report</summary>

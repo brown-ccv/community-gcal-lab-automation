@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCSVFromBuffer, getEventSummary } from '../src/csvParser.js';
+import { parseCSVFromBuffer, getEventSummary, calculateComplianceDate } from '../src/csvParser.js';
 
 const header = [
   'ID',
@@ -31,7 +31,7 @@ test('parseCSVFromBuffer creates reminder and retention events for active partic
   const reminders = events.filter((event) => event.eventType === 'reminder');
   const retentions = events.filter((event) => event.eventType === 'retention');
 
-  assert.equal(events.length, 11);
+  assert.equal(events.length, 15);
   assert.equal(reminders.length, 8);
   assert.equal(retentions.length, 3);
   assert.equal(events.every((event) => event.participantId === '701'), true);
@@ -78,6 +78,51 @@ test('parseCSVFromBuffer skips participants with all empty date fields', () => {
   assert.equal(events.every((event) => event.participantId === '701'), true);
   assert.equal(events.some((event) => event.participantId === '717'), false);
   assert.equal(events.some((event) => event.participantId === '718'), false);
+});
+
+test('calculateComplianceDate adds exactly 14 days to base date', () => {
+  assert.equal(calculateComplianceDate('10/01/2025'), '10/15/2025');
+  assert.equal(calculateComplianceDate('12/15/2025'), '12/29/2025');
+  assert.equal(calculateComplianceDate('01/20/2026'), '02/03/2026');
+});
+
+test('calculateComplianceDate returns null for invalid dates', () => {
+  assert.equal(calculateComplianceDate(''), null);
+  assert.equal(calculateComplianceDate('invalid'), null);
+});
+
+test('parseCSVFromBuffer creates compliance events for all 4 bursts with date+14', () => {
+  const rows = [
+    '701,Active,01/01/2026,01/10/2026,10/01/2025,02/01/2026,02/10/2026,10/10/2025,03/01/2026,03/10/2026,10/20/2025,04/01/2026,04/10/2026,10/30/2025',
+  ];
+
+  const csv = [header, ...rows].join('\n');
+  const events = parseCSVFromBuffer(Buffer.from(csv, 'utf-8'));
+  const complianceEvents = events.filter((event) => event.eventType === 'compliance');
+
+  assert.equal(complianceEvents.length, 4);
+  assert.equal(complianceEvents[0].title, 'BURST 1 Week 2 Compliance Tracking');
+  assert.equal(complianceEvents[0].date, '10/15/2025');
+  assert.equal(complianceEvents[1].title, 'BURST 2 Week 2 Compliance Tracking');
+  assert.equal(complianceEvents[1].date, '10/24/2025');
+  assert.equal(complianceEvents[2].title, 'BURST 3 Week 2 Compliance Tracking');
+  assert.equal(complianceEvents[2].date, '11/03/2025');
+  assert.equal(complianceEvents[3].title, 'BURST 4 Week 2 Compliance Tracking');
+  assert.equal(complianceEvents[3].date, '11/13/2025');
+});
+
+test('parseCSVFromBuffer compliance events have retention calendarType', () => {
+  const rows = [
+    '701,Active,,,10/01/2025,,,10/10/2025,,,10/20/2025,,,10/30/2025',
+  ];
+
+  const csv = [header, ...rows].join('\n');
+  const events = parseCSVFromBuffer(Buffer.from(csv, 'utf-8'));
+  const complianceEvents = events.filter((event) => event.eventType === 'compliance');
+
+  assert.equal(complianceEvents.length, 4);
+  assert.ok(complianceEvents.every((e) => e.calendarType === 'retention'));
+  assert.ok(complianceEvents.every((e) => e.baseDate !== undefined));
 });
 
 test('parseCSVFromBuffer skips empty date rows mixed with valid participants', () => {

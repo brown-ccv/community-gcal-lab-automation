@@ -91,6 +91,35 @@ function shiftWeekendDate(dateStr) {
 }
 
 /**
+ * Shift weekend dates specifically for compliance events.
+ * Saturday and Sunday both shift to Monday.
+ * @param {string} dateStr - Date in MM/DD/YYYY format
+ * @returns {Object} - { adjustedDate: string, wasShifted: boolean, originalDate: string, shiftedTo: string|null }
+ */
+export function shiftWeekendDateMonday(dateStr) {
+  const [month, day, year] = dateStr.split('/').map(s => parseInt(s.trim(), 10));
+  const date = new Date(year, month - 1, day);
+  const dayOfWeek = date.getDay();
+
+  let wasShifted = false;
+  const originalDate = dateStr;
+
+  let shiftedTo = null;
+  if (dayOfWeek === 6 || dayOfWeek === 0) {
+    date.setDate(date.getDate() + (dayOfWeek === 6 ? 2 : 1));
+    wasShifted = true;
+    shiftedTo = 'Monday';
+  }
+
+  const newMonth = String(date.getMonth() + 1).padStart(2, '0');
+  const newDay = String(date.getDate()).padStart(2, '0');
+  const newYear = date.getFullYear();
+  const adjustedDate = `${newMonth}/${newDay}/${newYear}`;
+
+  return { adjustedDate, wasShifted, originalDate, shiftedTo };
+}
+
+/**
  * Create calendar events for all follow-up types
  */
 export async function createEvents(auth, { baseDate, title, time, attendeeEmail, calendarId = 'primary', dryRun = false, demoMode = false }) {
@@ -482,7 +511,8 @@ export async function partitionCSVEventsByIdempotency(auth, events, {
       targetCalendarId = normalizedDefaultCalendarId;
     }
 
-    const { adjustedDate: eventDate, wasShifted, originalDate, shiftedTo } = shiftWeekendDate(event.date);
+    const shiftFn = event.eventType === 'compliance' ? shiftWeekendDateMonday : shiftWeekendDate;
+    const { adjustedDate: eventDate, wasShifted, originalDate, shiftedTo } = shiftFn(event.date);
     const eventKey = buildCSVEventKey(event.participantId, eventDate, event.column);
     const existingEvent = await findEventByKey(calendar, targetCalendarId, eventKey, 'idempotencyKey');
 
@@ -551,6 +581,7 @@ export async function createEventsFromCSV(auth, events, {
     details: [],
     reminderEvents: 0,
     retentionEvents: 0,
+    complianceEvents: 0,
   };
   
   // Hardcoded time (9:00 AM - 9:30 AM) for reminder events
@@ -568,9 +599,11 @@ export async function createEventsFromCSV(auth, events, {
       targetCalendarId = normalizedDefaultCalendarId;
     }
 
-    const { adjustedDate: eventDate, wasShifted, originalDate, shiftedTo } = shiftWeekendDate(event.date);
+    const shiftFn = event.eventType === 'compliance' ? shiftWeekendDateMonday : shiftWeekendDate;
+    const { adjustedDate: eventDate, wasShifted, originalDate, shiftedTo } = shiftFn(event.date);
     const eventKey = buildCSVEventKey(event.participantId, eventDate, event.column);
-    
+
+
     try {
       // Check if event already exists (idempotency)
       const existingEvent = await findEventByKey(calendar, targetCalendarId, eventKey, 'idempotencyKey');
@@ -600,7 +633,7 @@ export async function createEventsFromCSV(auth, events, {
           wasShifted,
           shiftedTo: wasShifted ? shiftedTo : null,
           originalDate: wasShifted ? originalDate : null,
-          time: event.eventType === 'retention' ? 'All-day' : eventTime,
+          time: (event.eventType === 'retention' || event.eventType === 'compliance') ? 'All-day' : eventTime,
           calendarType: event.calendarType,
         });
         continue;
@@ -609,7 +642,11 @@ export async function createEventsFromCSV(auth, events, {
       // Build description
       let description = `Participant ID: ${event.participantId}\nColumn: ${event.column}\nEvent Type: ${event.eventType}`;
       if (event.baseDate) {
-        description += `\nBase Date: ${event.baseDate}\nRetention Date (45 days before): ${eventDate}`;
+        if (event.eventType === 'compliance') {
+          description += `\nBase Date: ${event.baseDate}\nCompliance Date (14 days after): ${eventDate}`;
+        } else {
+          description += `\nBase Date: ${event.baseDate}\nRetention Date (45 days before): ${eventDate}`;
+        }
       }
       if (wasShifted) {
         description += `\n\nNote: Original date ${originalDate} fell on a weekend and was shifted to ${shiftedTo} (${eventDate}).`;
@@ -618,7 +655,7 @@ export async function createEventsFromCSV(auth, events, {
       // Build event object - different format for retention (all-day) vs reminder (timed)
       let calendarEvent;
       
-      if (event.eventType === 'retention') {
+      if (event.eventType === 'retention' || event.eventType === 'compliance') {
         // All-day event for retention
         const [month, day, year] = eventDate.split('/');
         const dateOnly = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
@@ -693,6 +730,8 @@ export async function createEventsFromCSV(auth, events, {
       // Track event type counts
       if (event.eventType === 'retention') {
         results.retentionEvents++;
+      } else if (event.eventType === 'compliance') {
+        results.complianceEvents++;
       } else if (event.eventType === 'reminder') {
         results.reminderEvents++;
       }
