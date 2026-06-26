@@ -1,6 +1,6 @@
 # Google Calendar Lab Invite Automation
 
-Automated creation of follow-up check-in calendar events for lab participants.
+Automated creation of follow-up check-in calendar events for lab participants. 
 
 ## Live Demo
 
