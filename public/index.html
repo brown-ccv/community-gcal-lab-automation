@@ -50,6 +50,39 @@
             <input type="file" id="csv-file-input" class="file-input" accept=".csv">
           </div>
 
+          <details class="calc-rules-panel" id="calc-rules-panel">
+            <summary>View Active Date Calculation Rules & Formulas</summary>
+            <div class="calc-rules-content">
+              <div class="rule-group rule-group-reminder">
+                <h4 class="rule-group-title">Reminder Calendar Rules</h4>
+                <ul>
+                  <li><strong>Source columns:</strong> B[1-4]STARTMIN10, B[1-4]STARTMIN1</li>
+                  <li><strong>Bursts:</strong> Bursts 1, 2, 3, and 4</li>
+                  <li><strong>Calculation:</strong> [Column Date] minus 10 minutes or 1 minute</li>
+                  <li><strong>Weekend shift:</strong> Saturday to Friday, Sunday to Monday</li>
+                </ul>
+              </div>
+              <div class="rule-group rule-group-retention">
+                <h4 class="rule-group-title">Retention Calendar Rules</h4>
+                <ul>
+                  <li><strong>Source columns:</strong> B[2-4]STARTDATE</li>
+                  <li><strong>Bursts:</strong> Bursts 2, 3, and 4 (excluding Burst 1)</li>
+                  <li><strong>Calculation:</strong> [Burst Start Date] minus 45 days</li>
+                  <li><strong>Weekend shift:</strong> Saturday to Friday, Sunday to Monday</li>
+                </ul>
+              </div>
+              <div class="rule-group rule-group-compliance">
+                <h4 class="rule-group-title">Compliance Calendar Rules</h4>
+                <ul>
+                  <li><strong>Source columns:</strong> B[1-4]STARTDATE</li>
+                  <li><strong>Bursts:</strong> Bursts 1, 2, 3, and 4</li>
+                  <li><strong>Calculation:</strong> [Burst Start Date] plus 14 days</li>
+                  <li><strong>Weekend shift:</strong> Saturday and Sunday to Monday</li>
+                </ul>
+              </div>
+            </div>
+          </details>
+
           <div id="csv-preview-section" class="csv-preview-section" style="display:none;">
             <div class="preview-box" style="margin-top: 16px;">
               <strong>Preview Summary</strong>
